@@ -1220,7 +1220,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 // ========== DATA LOADING ==========
 async function loadCoaches() {
-    const { data } = await sb.from('coaches').select('*').order('id');
+    const { data } = await sb.from('coaches').select('id, name, team_name, color, avatar_emoji, created_at').order('id');
     allCoaches = data || [];
 }
 
@@ -1321,12 +1321,18 @@ async function attemptLogin() {
     if (!selected) return;
     const coachId = parseInt(selected.dataset.id);
     const pin = getEnteredPin();
-    const coach = allCoaches.find(c => c.id === coachId);
 
-    if (coach && coach.pin === pin) {
-        currentCoach = coach;
+    // Validate PIN server-side (PIN never sent to client)
+    const { data: match, error } = await sb.from('coaches')
+        .select('id')
+        .eq('id', coachId)
+        .eq('pin', pin)
+        .maybeSingle();
+
+    if (match) {
+        currentCoach = allCoaches.find(c => c.id === coachId);
         isGuest = false;
-        localStorage.setItem('sly_coach_id', coach.id);
+        localStorage.setItem('sly_coach_id', currentCoach.id);
         localStorage.removeItem('sly_guest');
         await enterApp();
     } else {
@@ -2041,6 +2047,9 @@ async function refreshData() {
 
 // ========== REALTIME ==========
 function setupRealtime() {
+    // Clean up existing channels before re-subscribing (prevents crash on re-login)
+    sb.removeAllChannels();
+
     // Listen for new chat messages
     sb.channel('messages')
         .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, payload => {
