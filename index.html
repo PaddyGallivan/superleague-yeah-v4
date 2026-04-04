@@ -1021,6 +1021,7 @@
                     <span id="userEmoji"></span>
                     <span id="userName"></span>
                 </div>
+                <button class="header-btn" id="refreshBtn" title="Refresh data">🔄</button>
                 <button class="header-btn" id="themeToggle" title="Toggle theme">🌙</button>
                 <button class="header-btn" id="searchToggle" title="Search players">🔍</button>
             </div>
@@ -1075,6 +1076,7 @@
                         <th class="hide-mobile">Avg</th>
                         <th class="hide-mobile">PF</th>
                         <th class="hide-mobile">PA</th>
+                        <th class="hide-mobile">%</th>
                     </tr>
                 </thead>
                 <tbody id="ladderBody"></tbody>
@@ -1155,6 +1157,7 @@
             <div class="nav-item" data-page="pageTrades" onclick="switchPage('pageTrades', this)">
                 <span class="nav-icon">🔄</span>
                 <span>Trades</span>
+                <span class="nav-badge" id="tradeBadge" style="display:none">0</span>
             </div>
             <div class="nav-item" data-page="pageChat" onclick="switchPage('pageChat', this)">
                 <span class="nav-icon">💬</span>
@@ -1187,6 +1190,7 @@ let allTrades = [];
 let allMessages = [];
 let ladderData = [];
 let unreadMessages = 0;
+let unreadTrades = 0;
 let currentPage = 'pageLadder';
 let isDark = true;
 
@@ -1196,6 +1200,22 @@ document.addEventListener('DOMContentLoaded', async () => {
     renderCoachSelect();
     setupPinInputs();
     setupEventListeners();
+
+    // Restore session from localStorage
+    const savedCoachId = localStorage.getItem('sly_coach_id');
+    const savedGuest = localStorage.getItem('sly_guest');
+    if (savedCoachId) {
+        const coach = allCoaches.find(c => c.id === parseInt(savedCoachId));
+        if (coach) {
+            currentCoach = coach;
+            isGuest = false;
+            await enterApp();
+        }
+    } else if (savedGuest === 'true') {
+        isGuest = true;
+        currentCoach = null;
+        await enterApp();
+    }
 });
 
 // ========== DATA LOADING ==========
@@ -1276,6 +1296,7 @@ function setupEventListeners() {
     document.getElementById('loginBtn').addEventListener('click', attemptLogin);
     document.getElementById('guestLink').addEventListener('click', guestLogin);
     document.getElementById('themeToggle').addEventListener('click', toggleTheme);
+    document.getElementById('refreshBtn').addEventListener('click', refreshData);
     document.getElementById('searchToggle').addEventListener('click', () => {
         document.getElementById('searchOverlay').classList.add('active');
         document.getElementById('searchInput').focus();
@@ -1305,6 +1326,8 @@ async function attemptLogin() {
     if (coach && coach.pin === pin) {
         currentCoach = coach;
         isGuest = false;
+        localStorage.setItem('sly_coach_id', coach.id);
+        localStorage.removeItem('sly_guest');
         await enterApp();
     } else {
         document.getElementById('loginError').textContent = 'Wrong PIN mate. Try again.';
@@ -1316,6 +1339,8 @@ async function attemptLogin() {
 async function guestLogin() {
     isGuest = true;
     currentCoach = null;
+    localStorage.setItem('sly_guest', 'true');
+    localStorage.removeItem('sly_coach_id');
     await enterApp();
 }
 
@@ -1333,19 +1358,29 @@ async function enterApp() {
         document.getElementById('userName').textContent = 'Guest';
     }
 
-    await loadAllData();
-    renderLadder();
-    renderFixtures();
-    renderTeams();
-    renderTrades();
-    renderChat();
-    renderStats();
-    setupRealtime();
+    // Show loading state
+    document.getElementById('ladderBody').innerHTML = '<tr><td colspan="10" style="text-align:center;padding:2rem"><div class="spinner"></div><div style="margin-top:0.5rem;color:var(--text-secondary);font-size:0.85rem">Loading league data...</div></td></tr>';
+
+    try {
+        await loadAllData();
+        renderLadder();
+        renderFixtures();
+        renderTeams();
+        renderTrades();
+        renderChat();
+        renderStats();
+        setupRealtime();
+    } catch (err) {
+        console.error('Error loading app data:', err);
+        document.getElementById('ladderBody').innerHTML = '<tr><td colspan="10" style="text-align:center;padding:2rem;color:var(--loss)">Error loading data. Pull down to refresh.</td></tr>';
+    }
 }
 
 function logout() {
     currentCoach = null;
     isGuest = false;
+    localStorage.removeItem('sly_coach_id');
+    localStorage.removeItem('sly_guest');
     document.getElementById('mainApp').style.display = 'none';
     document.getElementById('loginScreen').style.display = 'flex';
     document.getElementById('loginError').textContent = '';
@@ -1365,6 +1400,9 @@ function switchPage(pageId, el) {
         unreadMessages = 0;
         document.getElementById('chatBadge').style.display = 'none';
         scrollChatToBottom();
+    }
+    if (pageId === 'pageTrades') {
+        document.getElementById('tradeBadge').style.display = 'none';
     }
 }
 
@@ -1415,6 +1453,9 @@ function renderLadder() {
         if (!c) return;
         const pts = l.wins * 4;
         const avg = l.played > 0 ? (l.points_for / l.played).toFixed(1) : '0.0';
+        const pf = parseFloat(l.points_for || 0);
+        const pa = parseFloat(l.points_against || 0);
+        const pct = pa > 0 ? ((pf / pa) * 100).toFixed(1) : '0.0';
         const rankClass = l.rank <= 3 ? `rank-${l.rank}` : 'rank-other';
 
         const tr = document.createElement('tr');
@@ -1440,8 +1481,9 @@ function renderLadder() {
             <td>${l.wins}</td>
             <td class="pts-highlight">${pts}</td>
             <td class="hide-mobile">${avg}</td>
-            <td class="hide-mobile">${parseFloat(l.points_for || 0).toFixed(1)}</td>
-            <td class="hide-mobile">${parseFloat(l.points_against || 0).toFixed(1)}</td>
+            <td class="hide-mobile">${pf.toFixed(1)}</td>
+            <td class="hide-mobile">${pa.toFixed(1)}</td>
+            <td class="hide-mobile">${pct}</td>
         `;
         tbody.appendChild(tr);
     });
@@ -1520,12 +1562,12 @@ function renderFixtures() {
                 <div class="match-teams">
                     <div class="match-team ${!isLive && w1 ? 'winner' : ''} ${!isLive && !w1 ? 'loser' : ''}">
                         <div class="match-team-name">${c1.avatar_emoji} ${c1.name}</div>
-                        <div class="match-score">${m.score1}</div>
+                        <div class="match-score">${m.score1.toFixed(1)}</div>
                     </div>
                     <div class="match-vs">vs</div>
                     <div class="match-team ${!isLive && w2 ? 'winner' : ''} ${!isLive && !w2 ? 'loser' : ''}">
                         <div class="match-team-name">${c2.avatar_emoji} ${c2.name}</div>
-                        <div class="match-score">${m.score2}</div>
+                        <div class="match-score">${m.score2.toFixed(1)}</div>
                     </div>
                 </div>
             `;
@@ -1697,9 +1739,22 @@ function escapeHtml(text) {
 }
 
 // ========== TRADES ==========
+function updateTradeBadge() {
+    if (!currentCoach) return;
+    const pending = allTrades.filter(t => t.target_id === currentCoach.id && t.status === 'pending');
+    const badge = document.getElementById('tradeBadge');
+    if (pending.length > 0) {
+        badge.textContent = pending.length;
+        badge.style.display = 'block';
+    } else {
+        badge.style.display = 'none';
+    }
+}
+
 function renderTrades(filter = 'pending') {
     const container = document.getElementById('tradesContent');
     container.innerHTML = '';
+    updateTradeBadge();
 
     let filtered = allTrades;
     if (filter !== 'all') {
@@ -1892,6 +1947,8 @@ function renderStats() {
     const lowCoach = completedScores.find(s => parseFloat(s.points) === lowScore);
     const highCoachName = highCoach ? allCoaches.find(c => c.id === highCoach.coach_id)?.name : '';
     const lowCoachName = lowCoach ? allCoaches.find(c => c.id === lowCoach.coach_id)?.name : '';
+    const highRound = highCoach ? allRounds.find(r => r.id === highCoach.round_id) : null;
+    const lowRound = lowCoach ? allRounds.find(r => r.id === lowCoach.round_id) : null;
 
     // Biggest blowout
     let biggestMargin = 0, biggestMatch = '';
@@ -1916,10 +1973,10 @@ function renderStats() {
     });
 
     const stats = [
-        { title: 'Highest Score', value: highScore, detail: `${highCoachName} - Round ${highCoach?.round_id || '?'}` },
-        { title: 'Lowest Score', value: lowScore, detail: `${lowCoachName} - Round ${lowCoach?.round_id || '?'}` },
+        { title: 'Highest Score', value: highScore.toFixed(1), detail: `${highCoachName} - Round ${highRound?.round_number || '?'}` },
+        { title: 'Lowest Score', value: lowScore.toFixed(1), detail: `${lowCoachName} - Round ${lowRound?.round_number || '?'}` },
         { title: 'League Average', value: avgScore, detail: 'Per coach per round' },
-        { title: 'Biggest Blowout', value: `${biggestMargin} pts`, detail: biggestMatch },
+        { title: 'Biggest Blowout', value: `${biggestMargin.toFixed(1)}`, detail: biggestMatch },
         { title: 'Total Players', value: allPlayers.length, detail: 'Across 16 coaches' },
         { title: 'Total Trades', value: allTrades.length, detail: `${allTrades.filter(t => t.status === 'accepted').length} accepted` }
     ];
@@ -1962,6 +2019,24 @@ function renderStats() {
             </div>
         `;
     });
+}
+
+// ========== REFRESH ==========
+async function refreshData() {
+    const btn = document.getElementById('refreshBtn');
+    btn.style.animation = 'spin 0.8s linear infinite';
+    try {
+        await loadAllData();
+        renderLadder();
+        renderFixtures();
+        renderTeams();
+        renderTrades();
+        renderChat();
+        renderStats();
+    } catch (err) {
+        console.error('Refresh error:', err);
+    }
+    setTimeout(() => btn.style.animation = '', 800);
 }
 
 // ========== REALTIME ==========
