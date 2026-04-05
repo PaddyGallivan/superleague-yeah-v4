@@ -1383,6 +1383,8 @@ async function enterApp() {
 }
 
 function logout() {
+    if (!confirm('Log out of Superleague Yeah?')) return;
+    sb.removeAllChannels();
     currentCoach = null;
     isGuest = false;
     localStorage.removeItem('sly_coach_id');
@@ -1401,6 +1403,7 @@ function switchPage(pageId, el) {
     document.getElementById(pageId).classList.add('active');
     if (el) el.classList.add('active');
     currentPage = pageId;
+    window.scrollTo({ top: 0, behavior: 'smooth' });
 
     if (pageId === 'pageChat') {
         unreadMessages = 0;
@@ -1464,8 +1467,10 @@ function renderLadder() {
         const pct = pa > 0 ? ((pf / pa) * 100).toFixed(1) : '0.0';
         const rankClass = l.rank <= 3 ? `rank-${l.rank}` : 'rank-other';
 
+        const isMe = currentCoach && c.id === currentCoach.id;
         const tr = document.createElement('tr');
         tr.style.cursor = 'pointer';
+        if (isMe) tr.style.background = 'rgba(56, 189, 248, 0.08)';
         tr.addEventListener('click', () => openTeamModal(c.id));
         tr.innerHTML = `
             <td><div class="rank-badge ${rankClass}">${l.rank}</div></td>
@@ -1558,11 +1563,14 @@ function renderFixtures() {
             if (!c1 || !c2) return;
 
             const card = document.createElement('div');
+            const isMyMatch = currentCoach && (m.coach1_id === currentCoach.id || m.coach2_id === currentCoach.id);
             card.className = `match-card ${isLive ? 'live' : ''}`;
+            if (isMyMatch) card.style.borderColor = 'var(--accent)';
 
             const w1 = m.score1 > m.score2;
             const w2 = m.score2 > m.score1;
 
+            const margin = Math.abs(m.score1 - m.score2).toFixed(1);
             card.innerHTML = `
                 ${m.match_name ? `<div class="match-name">🏆 ${m.match_name}</div>` : ''}
                 <div class="match-teams">
@@ -1576,6 +1584,7 @@ function renderFixtures() {
                         <div class="match-score">${m.score2.toFixed(1)}</div>
                     </div>
                 </div>
+                ${!isLive && margin !== '0.0' ? `<div style="text-align:center;font-size:0.7rem;color:var(--text-secondary);margin-top:0.3rem">Margin: ${margin}</div>` : ''}
             `;
             grid.appendChild(card);
         });
