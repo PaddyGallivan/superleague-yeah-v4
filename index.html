@@ -1079,6 +1079,18 @@
 .pick-picker-player-name{font-weight:600;font-size:0.9rem}
 .pick-picker-player-team{font-size:0.72rem;color:var(--text-secondary);margin-top:1px}
 .pick-picker-player-stats{margin-left:auto;font-size:0.72rem;color:var(--text-secondary);text-align:right;white-space:nowrap}
+.pick-team-meta{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:2px}
+.pick-countdown{font-size:0.78rem;color:#e67e22;font-weight:600}
+.pick-countdown.urgent{color:#e74c3c;animation:pulse 1s ease-in-out infinite}
+.pick-score-total{font-size:0.78rem;color:var(--accent);font-weight:700;background:rgba(0,168,107,0.12);padding:2px 8px;border-radius:10px}
+.admin-stat-row.picked td:first-child::after{content:" ●";color:var(--accent);font-size:0.6rem}
+.form-dot[title]{cursor:help}
+.modal-picks-section{margin-top:1rem;border-top:1px solid var(--border);padding-top:1rem}
+.modal-slot-row{display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid rgba(255,255,255,0.04);font-size:0.82rem}
+.modal-slot-tag{font-size:0.6rem;font-weight:700;width:26px;text-align:center;padding:3px 2px;border-radius:5px;background:var(--bg-input);color:var(--text-secondary);flex-shrink:0}
+.modal-slot-player{flex:1;font-weight:600;color:var(--text)}
+.modal-slot-score{font-weight:700;color:var(--accent);min-width:38px;text-align:right}
+
 /* Auto-pick toggle */
 .toggle-row { display:flex; align-items:center; justify-content:space-between; padding:10px 0; }
 .toggle-label { font-size:1em; font-weight:600; }
@@ -1160,7 +1172,11 @@
                 <button class="modal-close" onclick="closeTeamModal()">&times;</button>
             </div>
             <div id="modalStats" style="margin-bottom:1rem"></div>
-            <div style="font-weight:600;margin-bottom:0.5rem;font-size:0.9rem">Full Roster</div>
+            <div id="modalPicksSection" class="modal-picks-section" style="display:none">
+                <div style="font-weight:600;margin-bottom:0.5rem;font-size:0.9rem" id="modalPicksTitle">Current Round Picks</div>
+                <div id="modalPicksBody"></div>
+            </div>
+            <div style="font-weight:600;margin-bottom:0.5rem;font-size:0.9rem;margin-top:1rem">Full Roster</div>
             <ul class="modal-player-list" id="modalPlayerList"></ul>
         </div>
     </div>
@@ -1247,9 +1263,13 @@
     <div id="pagePickTeam" class="page">
         <div class="pick-team-header">
             <div class="pick-team-round" id="pickRoundLabel">Loading...</div>
-            <div class="pick-team-count"><span id="pickCountSelected">0</span>/11 slots filled</div>
+            <div class="pick-team-meta">
+                <div class="pick-team-count"><span id="pickCountSelected">0</span>/11 slots filled</div>
+                <div class="pick-score-total" id="pickScoreTotal" style="display:none"></div>
+                <div class="pick-countdown" id="pickCountdown" style="display:none"></div>
+            </div>
         </div>
-                <div id="pickLockedBar" class="pick-locked-bar" style="display:none">🔒 Round locked — picks are read-only</div>
+        <div id="pickLockedBar" class="pick-locked-bar" style="display:none">🔒 Round locked — picks are read-only</div>
         <div style="display:flex;gap:0.5rem;margin-bottom:0.5rem">
             <button class="pick-team-btn" id="pickSubmitBtn" onclick="savePickTeam()" style="flex:1;margin-bottom:0">Lock In Team ✓</button>
             <button id="pickLoadLastBtn" onclick="loadLastTeam()" style="background:var(--bg-card);color:var(--text-primary);border:1px solid var(--border);padding:0.6rem 1rem;border-radius:10px;font-size:0.85rem;font-weight:600;cursor:pointer;white-space:nowrap" title="Load picks from your previous round">Load last team</button>
@@ -1269,7 +1289,7 @@
         </div>
     </div>
 
-    <div id="pageH2H"<div id="pageH2H" class="page"><div class="h2h-container"><h2 style="margin:0 0 16px;color:var(--text)">Head to Head</h2><div class="h2h-select-row"><select id="h2hCoach1" onchange="renderH2H()"></select><span class="h2h-vs">VS</span><select id="h2hCoach2" onchange="renderH2H()"></select></div><div id="h2hResults"></div></div></div>
+    <div id="pageH2H" class="page"><div class="h2h-container"><h2 style="margin:0 0 16px;color:var(--text)">Head to Head</h2><div class="h2h-select-row"><select id="h2hCoach1" onchange="renderH2H()"></select><span class="h2h-vs">VS</span><select id="h2hCoach2" onchange="renderH2H()"></select></div><div id="h2hResults"></div></div></div>
 <div id="pageDraft" class="page"><div class="draft-container"><h2 style="margin:0 0 16px;color:var(--text)">Draft Board</h2><div class="draft-filter" id="draftFilter"></div><div id="draftBoard"></div></div></div>
 <div id="pageAdmin" class="page">
         <div class="section-title">⚙️ Admin</div>
@@ -1301,6 +1321,7 @@
                 <select id="adminStatsRound" style="background:var(--bg-input);color:var(--text-primary);border:1px solid var(--border);padding:0.4rem;border-radius:6px;font-size:0.85rem" onchange="loadAdminStats()"></select>
                 <button onclick="calcAndSaveScores()" style="background:var(--accent);color:#000;border:none;padding:0.4rem 1rem;border-radius:6px;font-weight:600;font-size:0.85rem;cursor:pointer;margin-left:auto">Calculate & Save Scores</button>
                 <button onclick="recalcFromDB()" style="background:var(--bg-input);color:var(--text-primary);border:1px solid var(--border);padding:0.4rem 0.85rem;border-radius:6px;font-weight:600;font-size:0.85rem;cursor:pointer" title="Recalculate scores from existing stats in DB (no stat entry needed)">↻ Recalc from DB</button>
+                <button onclick="zeroAllStats()" style="background:var(--bg-input);color:#e74c3c;border:1px solid #e74c3c;padding:0.4rem 0.85rem;border-radius:6px;font-weight:600;font-size:0.85rem;cursor:pointer" title="Zero all stat inputs">Zero All</button>
             </div>
             <div style="overflow-x:auto">
                 <table id="adminStatsTable" style="width:100%;border-collapse:collapse;font-size:0.78rem">
@@ -1478,18 +1499,27 @@ function getJerseySVG(color, size) {
           <feDropShadow dx="1" dy="2" stdDeviation="2" flood-color="rgba(0,0,0,0.30)"/>
         </filter>
       </defs>
+      <!-- Drop shadow group -->
       <g filter="url(#sh${uid})">
+        <!-- Left sleeve -->
         <path d="M8,20 L34,16 L33,46 L9,44 Q6,42 8,20 Z"
               fill="url(#sg${uid})" stroke="${dk2}" stroke-width="1.2" stroke-linejoin="round"/>
+        <!-- Right sleeve -->
         <path d="M92,20 L66,16 L67,46 L91,44 Q94,42 92,20 Z"
               fill="url(#sg${uid})" stroke="${dk2}" stroke-width="1.2" stroke-linejoin="round"/>
+        <!-- Body -->
         <path d="M34,16 L43,6 L57,6 L66,16 L68,108 L32,108 Z"
               fill="url(#bg${uid})" stroke="${dk2}" stroke-width="1.2" stroke-linejoin="round"/>
       </g>
+      <!-- Yoke sheen -->
       <path d="M35,17 L65,17 L63,30 L37,30 Z" fill="${lt}" opacity="0.25"/>
+      <!-- Chest highlight -->
       <path d="M37,22 L48,22 L48,40 L37,38 Z" fill="${lt}" opacity="0.12"/>
+      <!-- V-collar fill -->
       <path d="M43,6 L50,26 L57,6 L52,5 L50,19 L48,5 Z" fill="${dk2}" opacity="0.9"/>
+      <!-- V-collar edge lines -->
       <polyline points="43,6 50,26 57,6" fill="none" stroke="${dk2}" stroke-width="1.8" stroke-linejoin="round"/>
+      <!-- Sleeve-body seam lines -->
       <line x1="33" y1="16" x2="33" y2="46" stroke="${dk2}" stroke-width="0.8" opacity="0.5"/>
       <line x1="67" y1="16" x2="67" y2="46" stroke="${dk2}" stroke-width="0.8" opacity="0.5"/>
     </svg>`;
@@ -1499,7 +1529,7 @@ function getJerseyHTML(coach, size) {
     if (!coach) return '<span style="opacity:0.5">👤</span>';
     size = size || 32;
     if (coach.logo_url) {
-        return '<img src="' + coach.logo_url + '" width="' + size + '" height="' + size + '" style="object-fit:contain;display:inline-block;vertical-align:middle" loading="lazy" alt="' + (coach.team_name||coach.name) + '">';
+        return `<img src="${coach.logo_url}" width="${size}" height="${size}" style="object-fit:contain;display:inline-block;vertical-align:middle;mix-blend-mode:multiply;border-radius:4px" loading="lazy" alt="${coach.team_name||coach.name}">`;
     }
     if (!coach.color) return '<span style="opacity:0.5">👤</span>';
     return getJerseySVG(coach.color, size);
@@ -1728,7 +1758,7 @@ function renderLadder() {
         ladder = ladderData.map(l => {
             const coach = allCoaches.find(c => c.id === l.coach_id);
             const coachScores = allScores.filter(s => s.coach_id === l.coach_id).sort((a, b) => a.round_id - b.round_id);
-            const form = coachScores.filter(s => s.result).map(s => s.result === 'W' ? 'W' : 'L');
+            const form = coachScores.filter(s => s.result).map(s => ({ result: s.result, pts: parseFloat(s.points||0), round: allRounds.find(r=>r.id===s.round_id)?.round_number||'?' }));
             return { ...l, coach, form };
         });
     } else {
@@ -1741,7 +1771,7 @@ function renderLadder() {
                 const opp = allScores.find(os => os.round_id === s.round_id && os.coach_id === s.opponent_id);
                 return sum + (opp ? parseFloat(opp.points || 0) : 0);
             }, 0);
-            const form = scores.sort((a, b) => a.round_id - b.round_id).map(s => s.result === 'W' ? 'W' : 'L');
+            const form = scores.sort((a, b) => a.round_id - b.round_id).map(s => ({ result: s.result, pts: parseFloat(s.points||0), round: allRounds.find(r=>r.id===s.round_id)?.round_number||'?' }));
             ladder.push({ coach: c, rank: 0, played: scores.length, wins, points_for: pf, points_against: pa, form, percentage: pa > 0 ? ((pf / pa) * 100) : 0 });
         });
         ladder.sort((a, b) => {
@@ -1780,7 +1810,11 @@ function renderLadder() {
             </td>
             <td>
                 <div class="form-dots">
-                    ${l.form.map(f => `<div class="form-dot ${f === 'W' ? 'w' : 'l'}"></div>`).join('')}
+                    ${l.form.map(f => {
+                        const res = typeof f === 'object' ? f.result : f;
+                        const tip = typeof f === 'object' ? `R${f.round}: ${f.pts.toFixed(1)} pts` : '';
+                        return `<div class="form-dot ${res === 'W' ? 'w' : 'l'}" ${tip ? `title="${tip}"` : ''}></div>`;
+                    }).join('')}
                 </div>
             </td>
             <td>${l.played}</td>
@@ -1925,7 +1959,7 @@ function renderTeams() {
 }
 
 // ========== TEAM MODAL ==========
-function openTeamModal(coachId) {
+async function openTeamModal(coachId) {
     const coach = allCoaches.find(c => c.id === coachId);
     if (!coach) return;
     const players = allPlayers.filter(p => p.coach_id === coachId);
@@ -1945,6 +1979,45 @@ function openTeamModal(coachId) {
         </div>
     `;
 
+    // Per-slot picks breakdown for current/latest round — fetch on demand
+    const picksSection = document.getElementById('modalPicksSection');
+    const picksBody = document.getElementById('modalPicksBody');
+    const picksTitle = document.getElementById('modalPicksTitle');
+    const liveOrLatest = allRounds.find(r => r.status === 'live') || allRounds.find(r => r.status === 'open') || [...allRounds].sort((a,b) => b.round_number - a.round_number)[0];
+    picksSection.style.display = 'none';
+    document.getElementById('teamModal').classList.add('active'); // Show modal right away, picks load async
+    if (liveOrLatest) {
+        const [picksRes, statsRes] = await Promise.all([
+            sb.from('round_picks').select('slot,player_id,coach_id').eq('coach_id', coachId).eq('round_id', liveOrLatest.id),
+            sb.from('player_round_stats').select('player_id,goals,behinds,marks,tackles,hitouts,disposals').eq('round_id', liveOrLatest.id)
+        ]);
+        const coachPicks = picksRes.data || [];
+    if (coachPicks.length > 0) {
+        picksTitle.textContent = `Round ${liveOrLatest.round_number} Picks`;
+        const playerMap = {};
+        allPlayers.forEach(p => { playerMap[p.id] = p; });
+        const statsMap = {};
+        (statsRes.data || []).forEach(s => { statsMap[s.player_id] = s; });
+        let totalScore = 0;
+        const rows = PICK_ALL_SLOTS.map(slot => {
+            const pick = coachPicks.find(p => p.slot === slot);
+            if (!pick) return `<div class="modal-slot-row"><div class="modal-slot-tag">${slot}</div><div class="modal-slot-player" style="color:var(--text-secondary);font-style:italic">—</div></div>`;
+            const player = playerMap[pick.player_id];
+            const stats = statsMap[pick.player_id];
+            const isEmergency = PICK_EMERGENCY_SLOTS.includes(slot);
+            const score = (!isEmergency && stats) ? calcSlotScore(slot, stats) : null;
+            if (score !== null) totalScore += score;
+            return `<div class="modal-slot-row">
+                <div class="modal-slot-tag">${slot}</div>
+                <div class="modal-slot-player">${player?.name || 'Unknown'}</div>
+                <div class="modal-slot-score">${score !== null ? score.toFixed(1) : stats ? '?' : ''}</div>
+            </div>`;
+        }).join('');
+        picksBody.innerHTML = rows + (totalScore > 0 ? `<div style="display:flex;justify-content:flex-end;padding-top:6px;font-weight:700;color:var(--accent);font-size:0.9rem">Total: ${totalScore.toFixed(1)}</div>` : '');
+        picksSection.style.display = 'block';
+    }
+    } // end if liveOrLatest
+
     const list = document.getElementById('modalPlayerList');
     list.innerHTML = '';
     players.sort((a, b) => a.name.localeCompare(b.name)).forEach(p => {
@@ -1952,8 +2025,6 @@ function openTeamModal(coachId) {
         li.innerHTML = `<span>${p.name}</span><span class="player-afl">${p.afl_team}</span>`;
         list.appendChild(li);
     });
-
-    document.getElementById('teamModal').classList.add('active');
 }
 
 function closeTeamModal() {
@@ -2448,33 +2519,46 @@ async function loadAdminStats() {
     if (!tbody || isNaN(roundId)) return;
     tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:1rem;color:var(--text-secondary)">Loading...</td></tr>';
 
-    // Fetch existing stats for this round
-    const { data: existingStats } = await sb.from('player_round_stats')
-        .select('*').eq('round_id', roundId);
+    // Fetch stats and picks for this round in parallel
+    const [statsRes, picksRes] = await Promise.all([
+        sb.from('player_round_stats').select('*').eq('round_id', roundId),
+        sb.from('round_picks').select('player_id').eq('round_id', roundId)
+    ]);
     const statsMap = {};
-    (existingStats || []).forEach(s => statsMap[s.player_id] = s);
+    (statsRes.data || []).forEach(s => statsMap[s.player_id] = s);
+    // Build set of player IDs that appear in any pick for this round
+    const pickedPlayerIds = new Set((picksRes.data || []).map(p => Number(p.player_id)));
 
-    // Sort players by afl_team then name
+    // Sort: picked players first, then by afl_team then name
     const sorted = [...allPlayers].sort((a,b) => {
+        const aP = pickedPlayerIds.has(a.id) ? 0 : 1;
+        const bP = pickedPlayerIds.has(b.id) ? 0 : 1;
+        if (aP !== bP) return aP - bP;
         if (a.afl_team < b.afl_team) return -1;
         if (a.afl_team > b.afl_team) return 1;
         return a.name.localeCompare(b.name);
     });
 
+    const inputStyle = 'width:44px;background:var(--bg-input);color:var(--text-primary);border:1px solid var(--border);border-radius:4px;padding:2px 4px;font-size:0.8rem';
     let html = '';
     sorted.forEach(p => {
         const s = statsMap[p.id] || {};
-        html += `<tr>
-            <td style="font-size:0.8rem;padding:4px 6px;white-space:nowrap">${p.name} <span style="color:var(--text-secondary);font-size:0.7rem">${p.afl_team||''}</span></td>
-            <td><input type="number" min="0" class="admin-stat-input" data-player="${p.id}" data-stat="goals"     value="${s.goals||0}"    style="width:44px;background:var(--bg-input);color:var(--text-primary);border:1px solid var(--border);border-radius:4px;padding:2px 4px;font-size:0.8rem"></td>
-            <td><input type="number" min="0" class="admin-stat-input" data-player="${p.id}" data-stat="behinds"   value="${s.behinds||0}"  style="width:44px;background:var(--bg-input);color:var(--text-primary);border:1px solid var(--border);border-radius:4px;padding:2px 4px;font-size:0.8rem"></td>
-            <td><input type="number" min="0" class="admin-stat-input" data-player="${p.id}" data-stat="marks"     value="${s.marks||0}"    style="width:44px;background:var(--bg-input);color:var(--text-primary);border:1px solid var(--border);border-radius:4px;padding:2px 4px;font-size:0.8rem"></td>
-            <td><input type="number" min="0" class="admin-stat-input" data-player="${p.id}" data-stat="tackles"   value="${s.tackles||0}"  style="width:44px;background:var(--bg-input);color:var(--text-primary);border:1px solid var(--border);border-radius:4px;padding:2px 4px;font-size:0.8rem"></td>
-            <td><input type="number" min="0" class="admin-stat-input" data-player="${p.id}" data-stat="hitouts"   value="${s.hitouts||0}"  style="width:44px;background:var(--bg-input);color:var(--text-primary);border:1px solid var(--border);border-radius:4px;padding:2px 4px;font-size:0.8rem"></td>
-            <td><input type="number" min="0" class="admin-stat-input" data-player="${p.id}" data-stat="disposals" value="${s.disposals||0}" style="width:44px;background:var(--bg-input);color:var(--text-primary);border:1px solid var(--border);border-radius:4px;padding:2px 4px;font-size:0.8rem"></td>
+        const isPicked = pickedPlayerIds.has(p.id);
+        html += `<tr class="admin-stat-row${isPicked ? ' picked' : ''}" ${isPicked ? 'style="background:rgba(0,168,107,0.06)"' : ''}>
+            <td style="font-size:0.8rem;padding:4px 6px;white-space:nowrap${isPicked ? ';font-weight:600' : ''}">${p.name} <span style="color:var(--text-secondary);font-size:0.7rem">${p.afl_team||''}</span></td>
+            <td><input type="number" min="0" class="admin-stat-input" data-player="${p.id}" data-stat="goals"     value="${s.goals||0}"    style="${inputStyle}"></td>
+            <td><input type="number" min="0" class="admin-stat-input" data-player="${p.id}" data-stat="behinds"   value="${s.behinds||0}"  style="${inputStyle}"></td>
+            <td><input type="number" min="0" class="admin-stat-input" data-player="${p.id}" data-stat="marks"     value="${s.marks||0}"    style="${inputStyle}"></td>
+            <td><input type="number" min="0" class="admin-stat-input" data-player="${p.id}" data-stat="tackles"   value="${s.tackles||0}"  style="${inputStyle}"></td>
+            <td><input type="number" min="0" class="admin-stat-input" data-player="${p.id}" data-stat="hitouts"   value="${s.hitouts||0}"  style="${inputStyle}"></td>
+            <td><input type="number" min="0" class="admin-stat-input" data-player="${p.id}" data-stat="disposals" value="${s.disposals||0}" style="${inputStyle}"></td>
         </tr>`;
     });
     tbody.innerHTML = html || '<tr><td colspan="7" style="text-align:center;padding:1rem;color:var(--text-secondary)">No players found</td></tr>';
+}
+
+function zeroAllStats() {
+    document.querySelectorAll('.admin-stat-input').forEach(inp => { inp.value = 0; });
 }
 
 async function calcAndSaveScores() {
@@ -2563,7 +2647,7 @@ async function recalcScoresForRound(roundId, statusEl) {
     loadAdminScores();
 
     statusEl.style.color = 'var(--accent)';
-    statusEl.textContent = `✓ Done! ${saved} coach scores updated from $y(statsRes.data||[]).length} player stats.`;
+    statusEl.textContent = `✓ Done! ${saved} coach scores updated from ${(statsRes.data||[]).length} player stats.`;
     setTimeout(() => statusEl.textContent = '', 6000);
 }
 
@@ -2628,8 +2712,19 @@ function setupRealtime() {
             renderLadder();
             renderFixtures();
             renderStats();
+            if (currentPage === 'pagePickTeam') updatePickScoreTotal();
         })
         .subscribe();
+
+    // Auto-recalc scores every 5 min when a round is live
+    if (window.__autoRecalcInterval) clearInterval(window.__autoRecalcInterval);
+    window.__autoRecalcInterval = setInterval(async () => {
+        const liveRound = allRounds.find(r => r.status === 'live');
+        if (liveRound) {
+            console.log('[AutoRecalc] Live round detected, recalculating scores...');
+            await recalcScoresForRound(liveRound.id, { textContent:'', style:{color:''} });
+        }
+    }, 5 * 60 * 1000);
 }
 
 var TRASH_TALK=[{emoji:"\ud83d\udd25",text:"Someone sitting pretty on top... for now",hot:true},{emoji:"\ud83d\udca9",text:"That was a rough round, yikes."},{emoji:"\ud83c\udfc6",text:"On a winning streak!",hot:true},{emoji:"\ud83d\ude2d",text:"Still searching for that first win? You got this!"},{emoji:"\ud83d\udcaa",text:"Averaging big points across the season"},{emoji:"\ud83e\udd21",text:"The league has started, get in there!"},{emoji:"\ud83d\udca5",text:"Absolute scenes this round!",hot:true},{emoji:"\ud83d\udcc9",text:"Scores trending - check the ladder"},{emoji:"\ud83c\udfaf",text:"Quietly building momentum"},{emoji:"\ud83e\udde0",text:"Playing 4D chess with those trades"},{emoji:"\ud83d\ude80",text:"Coming for that top spot",hot:true},{emoji:"\ud83d\udcca",text:"Check this week\'s league average"},{emoji:"\u26a0\ufe0f",text:"Injuries hitting hard this round"},{emoji:"\ud83c\udf1f",text:"MVP of the week incoming..."},{emoji:"\ud83d\udc80",text:"Bottom spots looking tense right now"},{emoji:"\ud83c\udfa8",text:"Making moves nobody expected"}];
@@ -2713,6 +2808,9 @@ async function renderPickTeam() {
     const loadLastBtn = document.getElementById('pickLoadLastBtn');
     if (loadLastBtn) loadLastBtn.style.display = pickIsLocked ? 'none' : 'block';
 
+    // Countdown timer (uses lock_time if set on round)
+    startPickCountdown(openRound);
+
     const { data: picks } = await sb.from('round_picks')
         .select('slot, player_id')
         .eq('coach_id', currentCoach.id)
@@ -2775,6 +2873,48 @@ function updateSlotCount() {
     btn.textContent = filled === 11 ? 'Lock In Team ✓' : `Save Picks (${filled}/11)`;
     btn.style.background = scoringFilled === 8 ? 'var(--accent)' : '#e67e22';
     btn.disabled = false;
+    updatePickScoreTotal();
+}
+
+function updatePickScoreTotal() {
+    const el = document.getElementById('pickScoreTotal');
+    if (!el) return;
+    let total = 0;
+    let hasAny = false;
+    PICK_SCORING_SLOTS.forEach(slot => {
+        const pid = pickSlots[slot];
+        if (!pid) return;
+        const stats = pickRoundStats[pid];
+        if (!stats) return;
+        const pts = calcSlotScore(slot, stats);
+        if (pts !== null) { total += pts; hasAny = true; }
+    });
+    if (hasAny) {
+        el.textContent = `${total.toFixed(1)} pts`;
+        el.style.display = 'inline-block';
+    } else {
+        el.style.display = 'none';
+    }
+}
+
+let pickCountdownInterval = null;
+function startPickCountdown(round) {
+    const el = document.getElementById('pickCountdown');
+    if (!el) return;
+    if (pickCountdownInterval) clearInterval(pickCountdownInterval);
+    if (!round || !round.lock_time || pickIsLocked) { el.style.display = 'none'; return; }
+    function tick() {
+        const ms = new Date(round.lock_time) - Date.now();
+        if (ms <= 0) { el.style.display = 'none'; clearInterval(pickCountdownInterval); return; }
+        const h = Math.floor(ms / 3600000);
+        const m = Math.floor((ms % 3600000) / 60000);
+        const s = Math.floor((ms % 60000) / 1000);
+        el.textContent = `⏱ ${h > 0 ? h + 'h ' : ''}${String(m).padStart(2,'0')}m ${String(s).padStart(2,'0')}s`;
+        el.className = 'pick-countdown' + (ms < 3600000 ? ' urgent' : '');
+        el.style.display = 'inline-block';
+    }
+    tick();
+    pickCountdownInterval = setInterval(tick, 1000);
 }
 
 function openSlotPicker(slot) {
@@ -2842,8 +2982,9 @@ async function savePickTeam() {
             const { error } = await sb.from('round_picks').insert(rows);
             if (error) throw error;
         }
+        const now = new Date().toLocaleTimeString('en-AU', {hour:'2-digit', minute:'2-digit'});
         status.style.color = 'var(--accent)';
-        status.textContent = `✓ Team saved! ${rows.length}/11 slots filled`;
+        status.textContent = `✓ Team saved at ${now} — ${rows.length}/11 slots filled`;
     } catch(e) {
         status.style.color = '#e74c3c';
         status.textContent = 'Error: ' + (e.message || 'Could not save picks');
@@ -2893,7 +3034,7 @@ async function loadLastTeam() {
     setTimeout(() => status.textContent = '', 4000);
 }
 
-// ========== AUTO-PICK TOGGLE ==========
+    // ========== AUTO-PICK TOGGLE ==========
     async function loadAutoPickStatus() {
       try {
         const { data } = await sb.from('config').select('value').eq('key', 'auto_pick_enabled').single();
