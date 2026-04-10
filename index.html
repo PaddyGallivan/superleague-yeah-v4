@@ -1918,10 +1918,12 @@ function renderLadder() {
         const c = l.coach;
         if (!c) return;
         const pf = parseFloat(l.points_for || 0);
-        const losses = l.losses !== undefined ? l.losses : (l.played - l.wins);
         const pts = pf;
         const avg = l.played > 0 ? (pf / l.played).toFixed(1) : '0.0';
-        const pct = l.played > 0 ? ((l.wins / l.played) * 100).toFixed(0) + '%' : '0%';
+        // Use form-based W/L (above-average = W) to keep consistent with W column & form dots
+        const formWins = l.form.filter(f => f.result === 'W').length;
+        const formLosses = l.played - formWins;
+        const pct = l.played > 0 ? ((formWins / l.played) * 100).toFixed(0) + '%' : '0%';
         const rankClass = l.rank <= 3 ? `rank-${l.rank}` : 'rank-other';
 
         const isMe = currentCoach && c.id === currentCoach.id;
@@ -1954,7 +1956,7 @@ function renderLadder() {
             <td class="pts-highlight">${pts.toFixed(1)}</td>
             <td class="hide-mobile">${avg}</td>
             <td class="hide-mobile">${pf.toFixed(1)}</td>
-            <td class="hide-mobile">${losses}</td>
+            <td class="hide-mobile">${formLosses}</td>
             <td class="hide-mobile">${pct}</td>
         `;
         tbody.appendChild(tr);
@@ -2460,8 +2462,9 @@ function renderStats() {
     const lowCoach = completedScores.find(s => parseFloat(s.points) === lowScore);
     const highCoachName = highCoach ? allCoaches.find(c => c.id === highCoach.coach_id)?.name : '';
     const lowCoachName = lowCoach ? allCoaches.find(c => c.id === lowCoach.coach_id)?.name : '';
-    const highRound = highCoach ? allRounds.find(r => r.id === highCoach.round_id) : null;
-    const lowRound = lowCoach ? allRounds.find(r => r.id === lowCoach.round_id) : null;
+    // Use == (not ===) to handle string/number id mismatches from API
+    const highRound = highCoach ? allRounds.find(r => r.id == highCoach.round_id) : null;
+    const lowRound = lowCoach ? allRounds.find(r => r.id == lowCoach.round_id) : null;
 
     // Biggest blowout
     let biggestMargin = 0, biggestMatch = '';
@@ -2486,8 +2489,8 @@ function renderStats() {
     });
 
     const stats = [
-        { title: 'Highest Score', value: highScore.toFixed(1), detail: `${highCoachName} - Round ${highRound?.round_number || '?'}` },
-        { title: 'Lowest Score', value: lowScore.toFixed(1), detail: `${lowCoachName} - Round ${lowRound?.round_number || '?'}` },
+        { title: 'Highest Score', value: highScore.toFixed(1), detail: `${highCoachName} - Round ${highRound?.round_number ?? highCoach?.round_id ?? '?'}` },
+        { title: 'Lowest Score', value: lowScore.toFixed(1), detail: `${lowCoachName} - Round ${lowRound?.round_number ?? lowCoach?.round_id ?? '?'}` },
         { title: 'League Average', value: avgScore, detail: 'Per coach per round' },
         { title: 'Biggest Blowout', value: `${biggestMargin.toFixed(1)}`, detail: biggestMatch },
         { title: 'Total Players', value: allPlayers.length, detail: 'Across 16 coaches' },
