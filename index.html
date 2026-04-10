@@ -1909,8 +1909,12 @@ function renderTeams() {
 
     allCoaches.forEach(c => {
         const players = allPlayers.filter(p => p.coach_id === c.id);
-        const scores = allScores.filter(s => s.coach_id === c.id && s.result);
-        const wins = scores.filter(s => s.result === 'W').length;
+        const scores = allScores.filter(s => s.coach_id === c.id);
+        const wins = scores.filter(s => {
+            const roundScores = allScores.filter(os => os.round_id === s.round_id).map(os => parseFloat(os.points || 0));
+            const avg = roundScores.length > 0 ? roundScores.reduce((a, b) => a + b, 0) / roundScores.length : 0;
+            return parseFloat(s.points || 0) >= avg;
+        }).length;
         const losses = scores.length - wins;
 
         const card = document.createElement('div');
@@ -2287,12 +2291,19 @@ function renderStats() {
     const grid = document.getElementById('statsGrid');
     grid.innerHTML = '';
 
-    // Calculate stats
-    const completedScores = allScores.filter(s => s.result);
+    // Calculate stats (no result field in DB — all scores are final)
+    const completedScores = allScores;
     const allPoints = completedScores.map(s => parseFloat(s.points));
+
+    if (allPoints.length === 0) {
+        grid.innerHTML = '<div class="stat-card" style="grid-column:1/-1;text-align:center;color:var(--text-secondary)"><h3>Season Not Started</h3><div class="stat-value" style="font-size:2rem">🏈</div><div class="stat-detail">Stats will appear here once scores are entered</div></div>';
+        document.getElementById('awardsGrid').innerHTML = '';
+        return;
+    }
+
     const highScore = Math.max(...allPoints);
     const lowScore = Math.min(...allPoints);
-    const avgScore = allPoints.length > 0 ? (allPoints.reduce((a, b) => a + b, 0) / allPoints.length).toFixed(1) : 0;
+    const avgScore = (allPoints.reduce((a, b) => a + b, 0) / allPoints.length).toFixed(1);
 
     const highCoach = completedScores.find(s => parseFloat(s.points) === highScore);
     const lowCoach = completedScores.find(s => parseFloat(s.points) === lowScore);
@@ -2347,7 +2358,7 @@ function renderStats() {
     awardsGridEl.innerHTML = '';
 
     allRounds.filter(r => r.status === 'completed').forEach(round => {
-        const roundScores = allScores.filter(s => s.round_id === round.id && s.result);
+        const roundScores = allScores.filter(s => s.round_id === round.id);
         if (roundScores.length === 0) return;
 
         const mvp = roundScores.reduce((a, b) => parseFloat(a.points) > parseFloat(b.points) ? a : b);
