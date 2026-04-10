@@ -11,7 +11,6 @@
     <link rel="apple-touch-icon" href="/apple-touch-icon.png">
     <link rel="manifest" href="/manifest.json">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -1705,7 +1704,6 @@ async function enterApp() {
 
 function logout() {
     if (!confirm('Log out of Superleague Yeah?')) return;
-
     currentCoach = null;
     isGuest = false;
     localStorage.removeItem('sly_coach_id');
@@ -1758,37 +1756,42 @@ function renderLadder() {
         ladder = ladderData.map(l => {
             const coach = allCoaches.find(c => c.id === l.coach_id);
             const coachScores = allScores.filter(s => s.coach_id === l.coach_id).sort((a, b) => a.round_id - b.round_id);
-            const form = coachScores.filter(s => s.result).map(s => ({ result: s.result, pts: parseFloat(s.points||0), round: allRounds.find(r=>r.id===s.round_id)?.round_number||'?' }));
+            // Compute W/L per round: W = above-average score for that round
+            const form = coachScores.map(s => {
+                const roundScores = allScores.filter(os => os.round_id === s.round_id).map(os => parseFloat(os.points || 0));
+                const avg = roundScores.length > 0 ? roundScores.reduce((a, b) => a + b, 0) / roundScores.length : 0;
+                const myPts = parseFloat(s.points || 0);
+                const rnd = allRounds.find(r => r.id === s.round_id);
+                return { result: myPts >= avg ? 'W' : 'L', pts: myPts, round: rnd?.round_number || '?' };
+            });
             return { ...l, coach, form };
         });
     } else {
-        // Build from scores
+        // Build from scores (points-based, above-average = W)
         allCoaches.forEach(c => {
-            const scores = allScores.filter(s => s.coach_id === c.id && s.result);
-            const wins = scores.filter(s => s.result === 'W').length;
+            const scores = allScores.filter(s => s.coach_id === c.id).sort((a, b) => a.round_id - b.round_id);
             const pf = scores.reduce((sum, s) => sum + parseFloat(s.points || 0), 0);
-            const pa = scores.reduce((sum, s) => {
-                const opp = allScores.find(os => os.round_id === s.round_id && os.coach_id === s.opponent_id);
-                return sum + (opp ? parseFloat(opp.points || 0) : 0);
-            }, 0);
-            const form = scores.sort((a, b) => a.round_id - b.round_id).map(s => ({ result: s.result, pts: parseFloat(s.points||0), round: allRounds.find(r=>r.id===s.round_id)?.round_number||'?' }));
-            ladder.push({ coach: c, rank: 0, played: scores.length, wins, points_for: pf, points_against: pa, form, percentage: pa > 0 ? ((pf / pa) * 100) : 0 });
+            const form = scores.map(s => {
+                const roundScores = allScores.filter(os => os.round_id === s.round_id).map(os => parseFloat(os.points || 0));
+                const avg = roundScores.length > 0 ? roundScores.reduce((a, b) => a + b, 0) / roundScores.length : 0;
+                const myPts = parseFloat(s.points || 0);
+                const rnd = allRounds.find(r => r.id === s.round_id);
+                return { result: myPts >= avg ? 'W' : 'L', pts: myPts, round: rnd?.round_number || '?' };
+            });
+            const wins = form.filter(f => f.result === 'W').length;
+            ladder.push({ coach: c, rank: 0, played: scores.length, wins, points_for: pf, points_against: 0, form, percentage: 0 });
         });
-        ladder.sort((a, b) => {
-            const ptsA = a.wins * 4, ptsB = b.wins * 4;
-            if (ptsB !== ptsA) return ptsB - ptsA;
-            return b.percentage - a.percentage;
-        });
+        ladder.sort((a, b) => b.points_for - a.points_for);
         ladder.forEach((l, i) => l.rank = i + 1);
     }
 
     ladder.forEach(l => {
         const c = l.coach;
         if (!c) return;
-        const pts = l.wins * 4;
-        const avg = l.played > 0 ? (l.points_for / l.played).toFixed(1) : '0.0';
         const pf = parseFloat(l.points_for || 0);
         const pa = parseFloat(l.points_against || 0);
+        const pts = pf;
+        const avg = l.played > 0 ? (pf / l.played).toFixed(1) : '0.0';
         const pct = pa > 0 ? ((pf / pa) * 100).toFixed(1) : '0.0';
         const rankClass = l.rank <= 3 ? `rank-${l.rank}` : 'rank-other';
 
@@ -1818,8 +1821,8 @@ function renderLadder() {
                 </div>
             </td>
             <td>${l.played}</td>
-            <td>${l.wins}</td>
-            <td class="pts-highlight">${pts}</td>
+            <td>${l.form.filter(f => f.result === 'W').length}</td>
+            <td class="pts-highlight">${pts.toFixed(1)}</td>
             <td class="hide-mobile">${avg}</td>
             <td class="hide-mobile">${pf.toFixed(1)}</td>
             <td class="hide-mobile">${pa.toFixed(1)}</td>
@@ -1834,44 +1837,17 @@ function renderFixtures() {
     const container = document.getElementById('fixturesContent');
     container.innerHTML = '';
 
-    // Group scores by round
-    const roundMap = {};
-    allRounds.forEach(r => {
-        roundMap[r.id] = { ...r, matches: [] };
-    });
+    // Show each round as a sorted points scoreboard
+    const roundsWithScores = allRounds
+        .filter(r => allScores.some(s => s.round_id === r.id))
+        .sort((a, b) => b.round_number - a.round_number);
 
-    // Pair up scores into matches
-    allScores.forEach(s => {
-        if (!roundMap[s.round_id]) return;
-        // Check if this match already exists (from opponent's perspective)
-        const existing = roundMap[s.round_id].matches.find(m =>
-            (m.coach1_id === s.opponent_id && m.coach2_id === s.coach_id)
-        );
-        if (!existing) {
-            roundMap[s.round_id].matches.push({
-                coach1_id: s.coach_id,
-                coach2_id: s.opponent_id,
-                score1: parseFloat(s.points),
-                score2: 0,
-                match_name: s.match_name || ''
-            });
-        } else {
-            existing.score2 = parseFloat(s.points);
-        }
-    });
+    if (roundsWithScores.length === 0) {
+        container.innerHTML = '<div style="text-align:center;padding:2rem;color:var(--text-secondary)">No scores yet this season.</div>';
+        return;
+    }
 
-    // Fix score2 by looking up opponent's score
-    Object.values(roundMap).forEach(r => {
-        r.matches.forEach(m => {
-            const oppScore = allScores.find(s => s.round_id === r.id && s.coach_id === m.coach2_id);
-            if (oppScore) m.score2 = parseFloat(oppScore.points);
-        });
-    });
-
-    // Render rounds in reverse order (latest first)
-    const sortedRounds = Object.values(roundMap).sort((a, b) => b.round_number - a.round_number);
-
-    sortedRounds.forEach(round => {
+    roundsWithScores.forEach(round => {
         const section = document.createElement('div');
         section.className = 'round-section';
         const isLive = round.status === 'live';
@@ -1883,37 +1859,40 @@ function renderFixtures() {
             </div>
         `;
 
+        // Get all scores for this round, sorted highest to lowest
+        const roundScores = allScores
+            .filter(s => s.round_id === round.id)
+            .sort((a, b) => parseFloat(b.points || 0) - parseFloat(a.points || 0));
+
+        const avgPts = roundScores.length > 0
+            ? roundScores.reduce((sum, s) => sum + parseFloat(s.points || 0), 0) / roundScores.length
+            : 0;
+
         const grid = document.createElement('div');
         grid.className = 'matches-grid';
 
-        round.matches.forEach(m => {
-            const c1 = allCoaches.find(c => c.id === m.coach1_id);
-            const c2 = allCoaches.find(c => c.id === m.coach2_id);
-            if (!c1 || !c2) return;
+        roundScores.forEach((s, idx) => {
+            const coach = allCoaches.find(c => c.id === s.coach_id);
+            if (!coach) return;
+            const pts = parseFloat(s.points || 0);
+            const isMe = currentCoach && s.coach_id === currentCoach.id;
+            const aboveAvg = pts >= avgPts;
 
             const card = document.createElement('div');
-            const isMyMatch = currentCoach && (m.coach1_id === currentCoach.id || m.coach2_id === currentCoach.id);
-            card.className = `match-card ${isLive ? 'live' : ''}`;
-            if (isMyMatch) card.style.borderColor = 'var(--accent)';
+            card.className = `match-card`;
+            if (isMe) card.style.borderColor = 'var(--accent)';
 
-            const w1 = m.score1 > m.score2;
-            const w2 = m.score2 > m.score1;
-
-            const margin = Math.abs(m.score1 - m.score2).toFixed(1);
             card.innerHTML = `
-                ${m.match_name ? `<div class="match-name">🏆 ${m.match_name}</div>` : ''}
-                <div class="match-teams">
-                    <div class="match-team ${!isLive && w1 ? 'winner' : ''} ${!isLive && !w1 ? 'loser' : ''}">
-                        <div class="match-team-name" style="display:flex;align-items:center;gap:0.3rem">${getJerseyHTML(c1, 24)} ${c1.name}</div>
-                        <div class="match-score">${m.score1.toFixed(1)}</div>
+                <div class="match-teams" style="align-items:center">
+                    <div class="match-team" style="flex:1">
+                        <div class="match-team-name" style="display:flex;align-items:center;gap:0.4rem">
+                            <span style="color:var(--text-secondary);font-size:0.75rem;min-width:1.2rem">${idx + 1}.</span>
+                            ${getJerseyHTML(coach, 24)} ${coach.name}
+                        </div>
+                        <div style="font-size:0.7rem;color:var(--text-secondary)">${coach.team_name}</div>
                     </div>
-                    <div class="match-vs">vs</div>
-                    <div class="match-team ${!isLive && w2 ? 'winner' : ''} ${!isLive && !w2 ? 'loser' : ''}">
-                        <div class="match-team-name" style="display:flex;align-items:center;gap:0.3rem">${getJerseyHTML(c2, 24)} ${c2.name}</div>
-                        <div class="match-score">${m.score2.toFixed(1)}</div>
-                    </div>
+                    <div class="match-score" style="color:${aboveAvg ? 'var(--win)' : 'var(--loss)'}">${pts.toFixed(1)}</div>
                 </div>
-                ${!isLive && margin !== '0.0' ? `<div style="text-align:center;font-size:0.7rem;color:var(--text-secondary);margin-top:0.3rem">Margin: ${margin}</div>` : ''}
             `;
             grid.appendChild(card);
         });
@@ -1963,9 +1942,14 @@ async function openTeamModal(coachId) {
     const coach = allCoaches.find(c => c.id === coachId);
     if (!coach) return;
     const players = allPlayers.filter(p => p.coach_id === coachId);
-    const scores = allScores.filter(s => s.coach_id === coachId && s.result);
-    const wins = scores.filter(s => s.result === 'W').length;
+    const scores = allScores.filter(s => s.coach_id === coachId);
     const pf = scores.reduce((sum, s) => sum + parseFloat(s.points || 0), 0);
+    // Wins = rounds where this coach scored above average
+    const wins = scores.filter(s => {
+        const roundScores = allScores.filter(os => os.round_id === s.round_id).map(os => parseFloat(os.points || 0));
+        const avg = roundScores.length > 0 ? roundScores.reduce((a, b) => a + b, 0) / roundScores.length : 0;
+        return parseFloat(s.points || 0) >= avg;
+    }).length;
 
     document.getElementById('modalEmoji').innerHTML = getJerseyHTML(coach, 48);
     document.getElementById('modalCoachName').textContent = coach.name;
@@ -2240,8 +2224,8 @@ async function submitTrade() {
     const targetId = parseInt(document.getElementById('tradeTargetCoach').value);
     if (!targetId) { alert('Select a coach to trade with!'); return; }
 
-    const myChecked = Array.from(document.querySelectorAll('#tradeMyPlayers input:checked')).map(i => parseInt(i.value));
-    const theirChecked = Array.from(document.querySelectorAll('#tradeTheirPlayers input:checked')).map(i => parseInt(i.value));
+    const myChecked = Array.from(document.querySelectorAll('#tradeMyPlayers input:checked')).map(i => i.value);
+    const theirChecked = Array.from(document.querySelectorAll('#tradeTheirPlayers input:checked')).map(i => i.value);
 
     if (myChecked.length === 0 || theirChecked.length === 0) {
         alert('Select at least one player from each side!');
@@ -2249,7 +2233,6 @@ async function submitTrade() {
     }
 
     const message = document.getElementById('tradeMessage').value.trim();
-
 
     const target = allCoaches.find(c => c.id === targetId);
     // Create trade with players and message in one call
@@ -2273,9 +2256,7 @@ async function submitTrade() {
 }
 
 async function respondTrade(tradeId, status) {
-
     const trade = allTrades.find(t => t.id === tradeId);
-
     const proposer = allCoaches.find(c => c.id === trade.proposer_id);
     const target = allCoaches.find(c => c.id === trade.target_id);
 
@@ -2516,7 +2497,7 @@ async function loadAdminStats() {
     const statsMap = {};
     (Array.isArray(statsData) ? statsData : []).forEach(s => statsMap[s.player_id] = s);
     // Build set of player IDs that appear in any pick for this round
-    const pickedPlayerIds = new Set((Array.isArray(picksData) ? picksData : []).map(p => Number(p.player_id)));
+    const pickedPlayerIds = new Set((Array.isArray(picksData) ? picksData : []).map(p => p.player_id));
 
     // Sort: picked players first, then by afl_team then name
     const sorted = [...allPlayers].sort((a,b) => {
@@ -2561,7 +2542,7 @@ async function calcAndSaveScores() {
     const inputs = document.querySelectorAll('.admin-stat-input');
     const inputStatsMap = {};
     inputs.forEach(inp => {
-        const pid = parseInt(inp.dataset.player);
+        const pid = inp.dataset.player;
         const stat = inp.dataset.stat;
         const val = parseFloat(inp.value) || 0;
         if (!inputStatsMap[pid]) inputStatsMap[pid] = { goals:0, behinds:0, marks:0, tackles:0, hitouts:0, disposals:0 };
@@ -2571,7 +2552,7 @@ async function calcAndSaveScores() {
     // Only upsert rows where at least one stat > 0
     const rows = Object.entries(inputStatsMap)
         .filter(([,s]) => Object.values(s).some(v => v > 0))
-        .map(([pid, s]) => ({ player_id: parseInt(pid), round_id: roundId, ...s }));
+        .map(([pid, s]) => ({ player_id: pid, round_id: roundId, ...s }));
 
     if (rows.length > 0) {
         await apiFetch('/api/stats', { method: 'POST', body: JSON.stringify(rows) });
@@ -2592,7 +2573,6 @@ async function recalcScoresForRound(roundId, statusEl) {
         apiFetch(`/api/stats?round_id=${roundId}`),
         apiFetch(`/api/picks?round_id=${roundId}`)
     ]);
-
 
     // Build stats lookup from DB (source of truth — includes all previously saved sessions)
     const dbStatsMap = {};
@@ -2626,7 +2606,7 @@ async function recalcScoresForRound(roundId, statusEl) {
     loadAdminScores();
 
     statusEl.style.color = 'var(--accent)';
-    statusEl.textContent = `✓ Done! ${saved} coach scores updated from ${(statsRes.data||[]).length} player stats.`;
+    statusEl.textContent = `✓ Done! ${saved} coach scores updated from ${(Array.isArray(statsData) ? statsData : []).length} player stats.`;
     setTimeout(() => statusEl.textContent = '', 6000);
 }
 
@@ -2775,7 +2755,7 @@ async function renderPickTeam() {
     const picks = await apiFetch(`/api/picks?coach_id=${currentCoach.id}&round_id=${pickRoundId}`);
 
     pickSlots = {};
-    (Array.isArray(picks) ? picks : []).forEach(p => { if (p.slot) pickSlots[p.slot] = Number(p.player_id); });
+    (Array.isArray(picks) ? picks : []).forEach(p => { if (p.slot) pickSlots[p.slot] = p.player_id; });
 
     const myPlayers = allPlayers.filter(p => p.coach_id === currentCoach.id);
     pickRoundStats = {};
@@ -2892,7 +2872,7 @@ function openSlotPicker(slot) {
         const stats = pickRoundStats[p.id];
         const statStr = stats ? `${stats.goals??0}g ${stats.disposals??0}d ${stats.marks??0}m ${stats.tackles??0}t` : '';
         return `<div class="pick-picker-item${isUsed?' used':''}${isCurrent?' current':''}"
-                     onclick="choosePlayerForSlot('${slot}',${p.id})">
+                     onclick="choosePlayerForSlot('${slot}','${p.id}')">
             <div>
                 <div class="pick-picker-player-name">${p.name}</div>
                 <div class="pick-picker-player-team">${p.afl_team||''}</div>
@@ -2974,8 +2954,8 @@ async function loadLastTeam() {
     const myPlayerIds = new Set(allPlayers.filter(p => p.coach_id === currentCoach.id).map(p => p.id));
     let loaded = 0;
     lastPicks.forEach(p => {
-        if (p.slot && myPlayerIds.has(Number(p.player_id))) {
-            pickSlots[p.slot] = Number(p.player_id);
+        if (p.slot && myPlayerIds.has(p.player_id)) {
+            pickSlots[p.slot] = p.player_id;
             loaded++;
         }
     });
