@@ -1381,6 +1381,43 @@
 
     </div>
 
+
+    <!-- SLUSH FUND PAGE -->
+    <div id="pageSlushFund" class="page">
+        <div class="section-title">💰 The Fund</div>
+        <p style="font-size:0.8rem;color:var(--text-secondary);margin-bottom:1.25rem">$50 buy-in per coach. Slush fund for the end of season party 🎉</p>
+        <div id="fundSummaryCard" style="background:var(--bg-card);border-radius:16px;padding:1.25rem 1.5rem;margin-bottom:1.25rem;border:1px solid var(--border)">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:0.75rem">
+                <div><div style="font-size:0.75rem;color:var(--text-secondary);margin-bottom:0.2rem">COLLECTED</div><div id="fundCollected" style="font-size:2rem;font-weight:800;color:var(--accent2)">$0</div></div>
+                <div style="text-align:right"><div style="font-size:0.75rem;color:var(--text-secondary);margin-bottom:0.2rem">BALANCE</div><div id="fundBalance" style="font-size:2rem;font-weight:800;color:var(--accent)">$0</div></div>
+            </div>
+            <div style="background:var(--bg-input);border-radius:8px;height:10px;overflow:hidden;margin-bottom:0.5rem"><div id="fundProgressBar" style="height:100%;background:linear-gradient(90deg,var(--accent2),var(--accent));border-radius:8px;transition:width 0.5s ease;width:0%"></div></div>
+            <div id="fundProgressLabel" style="font-size:0.75rem;color:var(--text-secondary);text-align:center">0 of 16 paid</div>
+        </div>
+        <div style="background:var(--bg-card);border-radius:16px;padding:1.25rem;margin-bottom:1.25rem;border:1px solid var(--border)">
+            <div style="font-size:0.85rem;font-weight:700;margin-bottom:0.75rem;color:var(--text-primary)">WHO'S PAID</div>
+            <div id="fundPaymentsGrid" style="display:grid;grid-template-columns:1fr 1fr;gap:0.5rem"></div>
+            <div id="fundPayStatus" style="margin-top:0.75rem;font-size:0.78rem;color:var(--accent)"></div>
+        </div>
+        <div style="background:var(--bg-card);border-radius:16px;padding:1.25rem;border:1px solid var(--border)">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.75rem">
+                <div style="font-size:0.85rem;font-weight:700;color:var(--text-primary)">EXPENSES</div>
+                <div id="fundTotalSpent" style="font-size:0.85rem;font-weight:700;color:var(--loss)">$0 spent</div>
+            </div>
+            <div id="fundExpensesList" style="margin-bottom:1rem"></div>
+            <div id="addExpenseForm" style="display:none;border-top:1px solid var(--border);padding-top:1rem;margin-top:0.5rem">
+                <div style="font-size:0.8rem;font-weight:600;margin-bottom:0.5rem;color:var(--text-secondary)">ADD EXPENSE</div>
+                <input id="expenseDesc" type="text" placeholder="Description (e.g. Bowling night)" style="width:100%;background:var(--bg-input);border:1px solid var(--border);color:var(--text-primary);padding:0.5rem 0.75rem;border-radius:8px;font-size:0.85rem;margin-bottom:0.5rem">
+                <div style="display:flex;gap:0.5rem">
+                    <input id="expenseAmount" type="number" placeholder="Amount $" style="flex:1;background:var(--bg-input);border:1px solid var(--border);color:var(--text-primary);padding:0.5rem 0.75rem;border-radius:8px;font-size:0.85rem">
+                    <input id="expenseDate" type="date" style="flex:1;background:var(--bg-input);border:1px solid var(--border);color:var(--text-primary);padding:0.5rem 0.75rem;border-radius:8px;font-size:0.85rem">
+                </div>
+                <button onclick="addExpense()" style="width:100%;margin-top:0.5rem;background:var(--accent);color:#000;border:none;padding:0.6rem;border-radius:8px;font-weight:700;font-size:0.85rem;cursor:pointer">Add Expense</button>
+                <div id="expenseStatus" style="margin-top:0.5rem;font-size:0.78rem;color:var(--accent)"></div>
+            </div>
+        </div>
+    </div>
+
     <!-- NAV -->
     <nav>
         <div class="ticker-bar" id="tickerBar"><div class="ticker-track" id="tickerTrack"></div></div>
@@ -1401,6 +1438,10 @@
             <div class="nav-item" data-page="pageTeams" onclick="switchPage('pageTeams', this)">
                 <span class="nav-icon">👥</span>
                 <span>Teams</span>
+            </div>
+            <div class="nav-item" data-page="pageSlushFund" onclick="switchPage('pageSlushFund', this)">
+                <span class="nav-icon">💰</span>
+                <span>The Fund</span>
             </div>
             <div class="nav-item" id="pickTeamNav" data-page="pagePickTeam" onclick="switchPage('pagePickTeam', this)" style="display:none">
                 <span class="nav-icon">🏃</span>
@@ -1759,6 +1800,9 @@ function switchPage(pageId, el) {
     }
     if (pageId === 'pageHome') {
         loadHomePage();
+    }
+    if (pageId === 'pageSlushFund') {
+        loadSlushFund();
     }
 }
 
@@ -2756,13 +2800,14 @@ async function loadPayments() {
 
 async function togglePayment(coachId, newPaid, rowEl, name) {
     const status = document.getElementById('paymentsStatus');
-    status.textContent = `Updating ${name}...`;
+    if (status) status.textContent = `Updating ${name}...`;
     try {
-        await apiFetch('/api/payments', { method: 'POST', body: JSON.stringify({ coach_id: coachId, paid: newPaid }) });
+        await apiFetch(`/api/payments/${coachId}`, { method: 'PATCH', body: JSON.stringify({ paid: newPaid }) });
         await loadPayments();
-        status.textContent = '';
+        if (status) status.textContent = '';
+        if (typeof loadSlushFund === 'function') loadSlushFund();
     } catch(e) {
-        status.textContent = 'Error saving';
+        if (status) status.textContent = 'Error saving';
     }
 }
 
@@ -3161,6 +3206,77 @@ async function loadLastTeam() {
     status.textContent = `✓ Loaded ${loaded} picks from last round`;
     setTimeout(() => status.textContent = '', 4000);
 }
+
+    // ========== SLUSH FUND ==========
+    async function loadSlushFund() {
+        try {
+            const [payments, expenses] = await Promise.all([apiFetch('/api/payments'), apiFetch('/api/expenses')]);
+            const pList = Array.isArray(payments) ? payments : [];
+            const eList = Array.isArray(expenses) ? expenses : [];
+            const paidCount = pList.filter(p => p.paid).length;
+            const collected = paidCount * 50;
+            const spent = eList.reduce((s, e) => s + (e.amount || 0), 0);
+            const balance = collected - spent;
+            const total = pList.length * 50;
+            document.getElementById('fundCollected').textContent = `$${collected}`;
+            document.getElementById('fundBalance').textContent = `$${balance}`;
+            document.getElementById('fundProgressBar').style.width = total > 0 ? `${(collected/total)*100}%` : '0%';
+            document.getElementById('fundProgressLabel').textContent = `${paidCount} of ${pList.length} paid`;
+            document.getElementById('fundTotalSpent').textContent = `$${spent} spent`;
+            const grid = document.getElementById('fundPaymentsGrid');
+            grid.innerHTML = '';
+            const isAdm = currentCoach && currentCoach.id === 1;
+            pList.forEach(p => {
+                const card = document.createElement('div');
+                card.style.cssText = `display:flex;align-items:center;gap:0.5rem;padding:0.5rem 0.65rem;border-radius:10px;border:2px solid ${p.paid ? 'var(--accent)' : 'var(--border)'};background:var(--bg-input);${isAdm ? 'cursor:pointer' : ''}`;
+                card.innerHTML = `<span style="font-size:1rem">${p.paid ? '\u2705' : '\u2b1c'}</span><div style="flex:1;min-width:0"><div style="font-size:0.78rem;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${p.name}</div><div style="font-size:0.68rem;color:${p.paid ? 'var(--accent)' : 'var(--text-secondary)'}">${p.paid ? 'Paid $50' : 'Unpaid'}</div></div>`;
+                if (isAdm) card.onclick = () => toggleFundPayment(p.coach_id, !p.paid, p.name);
+                grid.appendChild(card);
+            });
+            const expEl = document.getElementById('fundExpensesList');
+            if (eList.length === 0) {
+                expEl.innerHTML = '<div style="font-size:0.8rem;color:var(--text-secondary);text-align:center;padding:0.75rem 0">No expenses yet</div>';
+            } else {
+                expEl.innerHTML = eList.map(e => `<div style="display:flex;align-items:center;gap:0.5rem;padding:0.5rem 0;border-bottom:1px solid var(--border)"><div style="flex:1"><div style="font-size:0.85rem;font-weight:600">${e.description}</div><div style="font-size:0.72rem;color:var(--text-secondary)">${e.expense_date || ''}${e.added_by ? ' \u00b7 ' + e.added_by : ''}</div></div><div style="font-size:0.9rem;font-weight:700;color:var(--loss)">-$${e.amount}</div>${isAdm ? `<button onclick="deleteExpense(${e.id})" style="background:none;border:none;color:var(--text-secondary);cursor:pointer;font-size:0.9rem;padding:0.2rem 0.3rem">\u2715</button>` : ''}</div>`).join('');
+            }
+            document.getElementById('addExpenseForm').style.display = isAdm ? '' : 'none';
+            const dateInput = document.getElementById('expenseDate');
+            if (dateInput && !dateInput.value) dateInput.value = new Date().toISOString().slice(0,10);
+        } catch(e) { console.error('loadSlushFund error', e); }
+    }
+
+    async function toggleFundPayment(coachId, newPaid, name) {
+        document.getElementById('fundPayStatus').textContent = `Updating ${name}...`;
+        try {
+            await apiFetch(`/api/payments/${coachId}`, { method: 'PATCH', body: JSON.stringify({ paid: newPaid }) });
+            await loadSlushFund();
+            await loadPayments();
+            document.getElementById('fundPayStatus').textContent = '';
+        } catch(e) { document.getElementById('fundPayStatus').textContent = 'Error saving'; }
+    }
+
+    async function addExpense() {
+        const desc = document.getElementById('expenseDesc').value.trim();
+        const amt = parseInt(document.getElementById('expenseAmount').value);
+        const date = document.getElementById('expenseDate').value;
+        const statusEl = document.getElementById('expenseStatus');
+        if (!desc || !amt || amt <= 0) { statusEl.textContent = 'Enter description and amount'; return; }
+        statusEl.textContent = 'Saving...';
+        try {
+            await apiFetch('/api/expenses', { method: 'POST', body: JSON.stringify({ description: desc, amount: amt, expense_date: date || new Date().toISOString().slice(0,10), added_by: currentCoach?.name || 'Admin' })});
+            document.getElementById('expenseDesc').value = '';
+            document.getElementById('expenseAmount').value = '';
+            statusEl.textContent = 'Added!';
+            setTimeout(() => statusEl.textContent = '', 2000);
+            await loadSlushFund();
+        } catch(e) { statusEl.textContent = 'Error saving'; }
+    }
+
+    async function deleteExpense(id) {
+        if (!confirm('Delete this expense?')) return;
+        try { await apiFetch(`/api/expenses/${id}`, { method: 'DELETE' }); await loadSlushFund(); }
+        catch(e) { alert('Error deleting'); }
+    }
 
     // ========== AUTO-PICK TOGGLE ==========
     async function loadAutoPickStatus() {
