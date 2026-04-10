@@ -2089,10 +2089,32 @@ async function sendMessage() {
     if (!text) return;
 
     input.value = '';
-    await apiFetch('/api/messages', {
-        method: 'POST',
-        body: JSON.stringify({ coach_id: currentCoach.id, content: text })
-    });
+
+    // Optimistically add message and render immediately
+    const tempMsg = {
+        id: Date.now(),
+        coach_id: currentCoach.id,
+        content: text,
+        message_type: 'user',
+        created_at: new Date().toISOString()
+    };
+    allMessages.push(tempMsg);
+    renderChat();
+
+    try {
+        await apiFetch('/api/messages', {
+            method: 'POST',
+            body: JSON.stringify({ coach_id: currentCoach.id, content: text })
+        });
+        // Refresh from server to get real ID
+        const msgs = await apiFetch('/api/messages');
+        if (Array.isArray(msgs)) { allMessages = msgs; renderChat(); }
+    } catch(e) {
+        // Remove optimistic message on failure
+        allMessages = allMessages.filter(m => m.id !== tempMsg.id);
+        renderChat();
+        alert('Message failed to send. Please try again.');
+    }
 }
 
 function scrollChatToBottom() {
