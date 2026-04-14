@@ -1947,6 +1947,21 @@
         </div>
 
         <div class="admin-section" style="margin-top:1.5rem">
+            <h3 style="font-size:1rem;margin-bottom:0.75rem">🔒 Change My PIN</h3>
+            <p style="font-size:0.78rem;color:var(--text-secondary);margin-bottom:0.75rem">Set a new 4-digit PIN for your account.</p>
+            <div style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap">
+                <div class="pin-input-group" style="margin:0">
+                    <input type="password" class="pin-digit change-pin-digit" maxlength="1" inputmode="numeric" placeholder="·">
+                    <input type="password" class="pin-digit change-pin-digit" maxlength="1" inputmode="numeric" placeholder="·">
+                    <input type="password" class="pin-digit change-pin-digit" maxlength="1" inputmode="numeric" placeholder="·">
+                    <input type="password" class="pin-digit change-pin-digit" maxlength="1" inputmode="numeric" placeholder="·">
+                </div>
+                <button id="changePinBtn" onclick="submitPinChange()" disabled style="padding:0.55rem 1.1rem;border-radius:10px;border:none;background:var(--accent);color:#000;font-size:0.85rem;font-weight:700;cursor:pointer;opacity:0.5">Save PIN</button>
+            </div>
+            <div id="changePinStatus" style="margin-top:0.5rem;font-size:0.8rem"></div>
+        </div>
+
+        <div class="admin-section" style="margin-top:1.5rem">
             <h3 style="font-size:1rem;margin-bottom:0.35rem;color:#e8a000">⭐ SLY Gold Members</h3>
             <p style="font-size:0.78rem;color:var(--text-secondary);margin-bottom:0.75rem">Mark coaches as SLY Gold for premium status. Toggle to add/remove.</p>
             <div id="goldMembersGrid" style="display:grid;gap:0.5rem"></div>
@@ -2245,16 +2260,67 @@ function renderCoachSelect() {
 function setupPinInputs() {
     const digits = document.querySelectorAll('.pin-digit');
     digits.forEach((input, idx) => {
+        input.addEventListener('keydown', (e) => {
+            if (e.key === 'Backspace') {
+                if (!e.target.value && idx > 0) { digits[idx-1].focus(); digits[idx-1].select(); }
+                return;
+            }
+            if (/^[0-9]$/.test(e.key)) {
+                e.preventDefault();
+                e.target.value = e.key;
+                if (idx < 3) digits[idx+1].focus();
+                checkLoginReady();
+            }
+        });
         input.addEventListener('input', (e) => {
-            if (e.target.value && idx < 3) digits[idx + 1].focus();
+            const v = e.target.value.replace(/\D/g,'');
+            if (v.length > 1) {
+                v.split('').forEach((ch, i) => { if (digits[idx+i]) digits[idx+i].value = ch; });
+                digits[Math.min(idx+v.length, 3)].focus();
+            } else { e.target.value = v; if (v && idx < 3) digits[idx+1].focus(); }
             checkLoginReady();
         });
-        input.addEventListener('keydown', (e) => {
-            if (e.key === 'Backspace' && !e.target.value && idx > 0) digits[idx - 1].focus();
-        });
+        input.addEventListener('focus', () => input.select());
     });
 }
 
+function setupChangePinInputs() {
+    const digits = document.querySelectorAll('.change-pin-digit');
+    digits.forEach((input, idx) => {
+        input.addEventListener('keydown', (e) => {
+            if (e.key === 'Backspace') { if (!e.target.value && idx > 0) { digits[idx-1].focus(); digits[idx-1].select(); } return; }
+            if (/^[0-9]$/.test(e.key)) { e.preventDefault(); e.target.value = e.key; if (idx < 3) digits[idx+1].focus(); checkChangePinReady(); }
+        });
+        input.addEventListener('input', () => checkChangePinReady());
+        input.addEventListener('focus', () => input.select());
+    });
+}
+function checkChangePinReady() {
+    const pin = Array.from(document.querySelectorAll('.change-pin-digit')).map(d => d.value).join('');
+    const btn = document.getElementById('changePinBtn');
+    if (btn) { btn.disabled = pin.length !== 4; btn.style.opacity = pin.length === 4 ? '1' : '0.5'; }
+}
+async function submitPinChange() {
+    if (!currentCoach) return;
+    const pin = Array.from(document.querySelectorAll('.change-pin-digit')).map(d => d.value).join('');
+    if (pin.length !== 4) return;
+    const status = document.getElementById('changePinStatus');
+    const btn = document.getElementById('changePinBtn');
+    btn.disabled = true; btn.textContent = 'Saving...';
+    try {
+        const res = await apiFetch('/api/coaches/' + currentCoach.id, { method: 'PATCH', body: JSON.stringify({ pin }) });
+        if (res && res.ok) {
+            status.style.color = 'var(--accent2)';
+            status.textContent = '✓ PIN updated! Use it next time you log in.';
+        } else { throw new Error('failed'); }
+        document.querySelectorAll('.change-pin-digit').forEach(d => { d.value = ''; });
+        btn.textContent = 'Save PIN'; checkChangePinReady();
+    } catch(e) {
+        status.style.color = 'var(--loss)';
+        status.textContent = 'Error saving PIN. Try again.';
+        btn.disabled = false; btn.textContent = 'Save PIN';
+    }
+}
 function checkLoginReady() {
     const selected = document.querySelector('.coach-select-btn.selected');
     const pin = Array.from(document.querySelectorAll('.pin-digit')).map(d => d.value).join('');
@@ -3212,6 +3278,7 @@ function setupAdmin() {
     document.getElementById('adminNav').style.display = '';
     loadPayments();
     loadGoldAdmin();
+    setupChangePinInputs();
 
     const selects = ['adminRoundSelect', 'adminPasteRound', 'adminStatsRound'];
     selects.forEach(selId => {
