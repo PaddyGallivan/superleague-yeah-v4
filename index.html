@@ -1963,7 +1963,7 @@
 
         <div class="admin-section" style="margin-top:1.5rem">
             <h3 style="font-size:1rem;margin-bottom:0.35rem;color:#e8a000">⭐ SLY Gold Members</h3>
-            <p style="font-size:0.78rem;color:var(--text-secondary);margin-bottom:0.5rem">SLY Gold is the premium tier of the league. Gold members pay an extra <strong style="color:#e8a000">$20</strong> on top of the standard buy-in. All SLY Gold proceeds — along with the $50 buy-ins — go straight into the <strong style="color:var(--accent2)">Day of Days party fund</strong>. 🎉 Gold members get the ⭐ GOLD badge throughout the app.</p>
+            <p style="font-size:0.78rem;color:var(--text-secondary);margin-bottom:0.5rem">SLY Gold is the premium tier of the league. Gold members pay an extra <strong style="color:#e8a000">$50 (doubles the standard entry fee). All SLY Gold proceeds — along with the $50 buy-ins — go straight into the <strong style="color:var(--accent2)">Day of Days party fund</strong>. 🎉 Gold members get the ⭐ GOLD badge throughout the app.</p>
             <p style="font-size:0.78rem;color:var(--text-secondary);margin-bottom:0.75rem">Toggle coaches below to grant or remove Gold status.</p>
             <div id="goldMembersGrid" style="display:grid;gap:0.5rem"></div>
             <div id="goldStatus" style="margin-top:0.5rem;font-size:0.78rem;color:#e8a000"></div>
@@ -2000,7 +2000,7 @@
                 <span style="font-size:0.9rem;font-weight:800;color:#e8a000">SLY GOLD</span>
                 <span style="font-size:0.7rem;color:var(--text-secondary);margin-left:auto">Premium members</span>
             </div>
-            <p style="font-size:0.75rem;color:var(--text-secondary);margin-bottom:0.75rem">Pay an extra <strong style="color:#e8a000">$20</strong> on top of your buy-in to become SLY Gold. You get the ⭐ GOLD badge across the whole app, and every Gold dollar goes straight to the <strong style="color:var(--accent2)">Day of Days party fund</strong>. 🎉</p>
+            <p style="font-size:0.75rem;color:var(--text-secondary);margin-bottom:0.75rem">Pay an extra <strong style="color:#e8a000">$50 (doubles the standard entry fee) to become SLY Gold. You get the ⭐ GOLD badge across the whole app, and every Gold dollar goes straight to the <strong style="color:var(--accent2)">Day of Days party fund</strong>. 🎉</p>
             <div id="fundGoldGrid" style="display:grid;grid-template-columns:1fr 1fr;gap:0.5rem"></div>
         </div>
         <div style="background:var(--bg-card);border-radius:16px;padding:1.25rem;border:1px solid var(--border)">
@@ -3512,7 +3512,7 @@ function loadGoldAdmin() {
         grid.appendChild(row);
     });
     const goldCount = Object.keys(gold).length;
-    if (status) status.textContent = goldCount > 0 ? `${goldCount} gold member${goldCount > 1 ? 's' : ''} — ${goldCount * 20} extra collected` : '';
+    if (status) status.textContent = goldCount > 0 ? `${goldCount} gold member${goldCount > 1 ? 's' : ''} — ${goldCount * 50} extra collected` : '';
 }
 function toggleGold(coachId, isGold, rowEl) {
     setGoldMember(coachId, isGold);
@@ -3526,7 +3526,7 @@ function renderFundGoldGrid() {
     const gold = getGoldMembers();
     const goldCoaches = allCoaches.filter(c => gold[String(c.id)]);
     if (goldCoaches.length === 0) { grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;color:var(--text-secondary);font-size:0.8rem;padding:0.5rem">No gold members yet — admin can add them</div>'; return; }
-    grid.innerHTML = goldCoaches.map(c => `<div style="display:flex;align-items:center;gap:0.5rem;padding:0.45rem 0.65rem;background:rgba(232,160,0,0.1);border-radius:8px;border:1px solid rgba(232,160,0,0.3)">${getJerseyHTML(c, 18)}<span style="font-size:0.82rem;font-weight:600;flex:1">${c.name}</span><span style="font-size:0.75rem;color:#e8a000;font-weight:700">$20</span></div>`).join('');
+    grid.innerHTML = goldCoaches.map(c => `<div style="display:flex;align-items:center;gap:0.5rem;padding:0.45rem 0.65rem;background:rgba(232,160,0,0.1);border-radius:8px;border:1px solid rgba(232,160,0,0.3)">${getJerseyHTML(c, 18)}<span style="font-size:0.82rem;font-weight:600;flex:1">${c.name}</span><span style="font-size:0.75rem;color:#e8a000;font-weight:700">$50</span></div>`).join('');
 }
 // ========== END SLY GOLD ==========
 
