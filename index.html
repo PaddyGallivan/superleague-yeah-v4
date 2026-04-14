@@ -1963,7 +1963,8 @@
 
         <div class="admin-section" style="margin-top:1.5rem">
             <h3 style="font-size:1rem;margin-bottom:0.35rem;color:#e8a000">⭐ SLY Gold Members</h3>
-            <p style="font-size:0.78rem;color:var(--text-secondary);margin-bottom:0.75rem">Mark coaches as SLY Gold for premium status. Toggle to add/remove.</p>
+            <p style="font-size:0.78rem;color:var(--text-secondary);margin-bottom:0.5rem">SLY Gold is the premium tier of the league. Gold members pay an extra <strong style="color:#e8a000">$20</strong> on top of the standard buy-in. All SLY Gold proceeds — along with the $50 buy-ins — go straight into the <strong style="color:var(--accent2)">Day of Days party fund</strong>. 🎉 Gold members get the ⭐ GOLD badge throughout the app.</p>
+            <p style="font-size:0.78rem;color:var(--text-secondary);margin-bottom:0.75rem">Toggle coaches below to grant or remove Gold status.</p>
             <div id="goldMembersGrid" style="display:grid;gap:0.5rem"></div>
             <div id="goldStatus" style="margin-top:0.5rem;font-size:0.78rem;color:#e8a000"></div>
         </div>
@@ -1999,7 +2000,7 @@
                 <span style="font-size:0.9rem;font-weight:800;color:#e8a000">SLY GOLD</span>
                 <span style="font-size:0.7rem;color:var(--text-secondary);margin-left:auto">Premium members</span>
             </div>
-            <p style="font-size:0.75rem;color:var(--text-secondary);margin-bottom:0.75rem">Pay an extra $20 to go SLY Gold and get the ⭐ badge across the league.</p>
+            <p style="font-size:0.75rem;color:var(--text-secondary);margin-bottom:0.75rem">Pay an extra <strong style="color:#e8a000">$20</strong> on top of your buy-in to become SLY Gold. You get the ⭐ GOLD badge across the whole app, and every Gold dollar goes straight to the <strong style="color:var(--accent2)">Day of Days party fund</strong>. 🎉</p>
             <div id="fundGoldGrid" style="display:grid;grid-template-columns:1fr 1fr;gap:0.5rem"></div>
         </div>
         <div style="background:var(--bg-card);border-radius:16px;padding:1.25rem;border:1px solid var(--border)">
@@ -2811,9 +2812,14 @@ async function openTeamModal(coachId) {
 
     const list = document.getElementById('modalPlayerList');
     list.innerHTML = '';
+    list.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:0.75rem;list-style:none;padding:0;margin-top:0.5rem';
     players.sort((a, b) => a.name.localeCompare(b.name)).forEach(p => {
         const li = document.createElement('li');
-        li.innerHTML = `<span>${p.name}</span><span class="player-afl">${p.afl_team}</span>`;
+        li.style.cssText = 'background:var(--bg-input);border-radius:12px;padding:0.75rem 0.5rem;display:flex;flex-direction:column;align-items:center;gap:0.4rem;text-align:center;border:1px solid var(--border)';
+        li.innerHTML = `<div style="width:56px;height:56px;border-radius:50%;overflow:hidden;flex-shrink:0">${getPlayerPhoto(p,56)}</div>
+            <div style="font-size:0.78rem;font-weight:600;line-height:1.2">${p.name}</div>
+            <div style="font-size:0.65rem;color:var(--text-secondary)">${getTeamBadge(p.team,'sm')}</div>
+            <div style="font-size:0.63rem;color:var(--text-secondary)">${(p.position||'').replace(/_/g,' ')}</div>`;
         list.appendChild(li);
     });
 }
@@ -4546,6 +4552,54 @@ async function loadLastTeam() {
 
     // ========== INJURY ROOM PAGE ==========
     async function loadInjuries() {
+    // Auto-populate from AFL Fantasy player status if no manual injuries in DB
+    const injContent = document.getElementById('injuriesContent');
+    if (!injContent) return;
+    try {
+        const r = await fetch('https://fantasy.afl.com.au/data/afl/players.json', {cache:'force-cache'});
+        if (!r.ok) throw new Error('AFL Fantasy unavailable');
+        const buf = await r.arrayBuffer();
+        const ds = new DecompressionStream('gzip');
+        const writer = ds.writable.getWriter();
+        writer.write(new Uint8Array(buf)); writer.close();
+        const reader = ds.readable.getReader();
+        const chunks = [];
+        while(true){const{done,value}=await reader.read();if(done)break;chunks.push(value);}
+        const totalLen = chunks.reduce((s,c)=>s+c.length,0);
+        const combined = new Uint8Array(totalLen);
+        let offset=0;for(const c of chunks){combined.set(c,offset);offset+=c.length;}
+        const players = JSON.parse(new TextDecoder().decode(combined));
+        // Filter injured/out/emergencies
+        const injured = players.filter(p => p.status && p.status !== 'playing');
+        const slyMap = {};
+        (allPlayers||[]).forEach(p=>{slyMap[p.name.toLowerCase()]=p;});
+        const slyInjured = injured
+            .map(p=>({...p,slyPlayer:slyMap[(p.first_name+' '+p.last_name).toLowerCase()]}))
+            .filter(p=>p.slyPlayer)
+            .sort((a,b)=>a.last_name.localeCompare(b.last_name));
+        if(slyInjured.length>0){
+            const statusEmoji={out:'🚫',late_out:'⚠️',medical_sub:'🔄',substitute:'🔄'};
+            injContent.innerHTML='<div style="font-size:0.78rem;color:var(--text-secondary);margin-bottom:0.75rem">Showing AFL Fantasy injury status for players in your SLY squad.</div>'
+                + slyInjured.map(p=>{
+                    const coach=(allCoaches||[]).find(c=>c.id===p.slyPlayer.coach_id);
+                    const emoji=statusEmoji[p.status]||'❓';
+                    return `<div style="display:flex;align-items:center;gap:0.75rem;padding:0.6rem 0.75rem;background:var(--bg-card);border-radius:10px;margin-bottom:0.5rem;border:1px solid var(--border)">
+                        ${getPlayerPhoto(p.slyPlayer,40)}
+                        <div style="flex:1">
+                            <div style="font-size:0.88rem;font-weight:600">${p.first_name} ${p.last_name}</div>
+                            <div style="font-size:0.72rem;color:var(--text-secondary)">${getTeamBadge(p.slyPlayer.team,'sm')}</div>
+                        </div>
+                        <div style="text-align:right">
+                            <div style="font-size:1.1rem">${emoji}</div>
+                            <div style="font-size:0.7rem;color:var(--loss);font-weight:600;text-transform:uppercase">${p.status.replace(/_/g,' ')}</div>
+                            ${coach?`<div style="font-size:0.68rem;color:var(--text-secondary)">${coach.name}</div>`:''}
+                        </div>
+                    </div>`;
+                }).join('');
+            return; // Skip API call if we got AFL Fantasy data
+        }
+    } catch(e) { console.warn('Injuries: AFL Fantasy load failed:', e.message); }
+
         const container = document.getElementById('injuriesContent');
         if (!container) return;
 
