@@ -1853,6 +1853,18 @@
 <div id="pageAdmin" class="page">
         <div class="section-title">⚙️ Admin</div>
         <div class="admin-section">
+            <h3 style="font-size:1rem;margin-bottom:0.75rem;color:var(--accent2)">🔄 Auto-Sync AFL Fantasy Scores</h3>
+            <p style="font-size:0.78rem;color:var(--text-secondary);margin-bottom:0.75rem">Pulls each player's AFL Fantasy score for a round and stores it automatically. No manual pasting needed.</p>
+            <div style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap;margin-bottom:0.5rem">
+                <select id="syncRoundSelect" style="padding:0.4rem 0.6rem;border-radius:8px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-primary);font-size:0.85rem">
+                    <option value="">Select round...</option>
+                </select>
+                <button onclick="syncAFLFantasyScores()" style="padding:0.5rem 1rem;border-radius:8px;border:none;background:var(--accent2);color:#000;font-size:0.85rem;font-weight:700;cursor:pointer">Sync Scores</button>
+            </div>
+            <div id="syncStatus" style="font-size:0.8rem;color:var(--accent)"></div>
+        </div>
+
+        <div class="admin-section">
             <h3 style="font-size:1rem;margin-bottom:0.5rem;color:var(--accent)">Sync Scores from SLY</h3>
             <p style="font-size:0.8rem;color:var(--text-secondary);margin-bottom:1rem">
                 Go to <a href="https://superleagueyeah.online/fixture" target="_blank" style="color:var(--accent)">superleagueyeah.online/fixture</a>, select the round, then run the bookmarklet from your bookmarks bar.
@@ -3235,6 +3247,19 @@ function setupAdmin() {
     loadPayments();
     loadGoldAdmin();
     setupChangePinInputs();
+    // Populate sync round selector
+    const syncSel = document.getElementById('syncRoundSelect');
+    if (syncSel && allRounds) {
+        allRounds.filter(r => r.round_number > 0).forEach(r => {
+            const opt = document.createElement('option');
+            opt.value = r.id;
+            opt.textContent = 'Round ' + r.round_number + ' (' + r.status + ')';
+            syncSel.appendChild(opt);
+        });
+        // Pre-select latest completed round
+        const latest = allRounds.filter(r => r.status === 'completed' && r.round_number > 0).sort((a,b) => b.round_number - a.round_number)[0];
+        if (latest) syncSel.value = latest.id;
+    }
 
     const selects = ['adminRoundSelect', 'adminPasteRound', 'adminStatsRound'];
     selects.forEach(selId => {
@@ -3925,6 +3950,79 @@ function renderPickLog(){
 function renderLiveDraftUI(){var saved=localStorage.getItem(LIVE_DRAFT_KEY);if(saved&&!liveDraft){document.getElementById('liveDraftSetup').style.display='';document.getElementById('liveDraftRoom').style.display='none';}else if(liveDraft){showLiveDraftRoom();}}
 // ========== END DRAFT ROOM ==========
 
+async function syncAFLFantasyScores() {
+    const roundSel = document.getElementById('syncRoundSelect');
+    const status = document.getElementById('syncStatus');
+    const roundId = parseInt(roundSel.value);
+    if (!roundId) { status.textContent = 'Please select a round.'; return; }
+    const round = allRounds.find(r => r.id === roundId);
+    if (!round) { status.textContent = 'Round not found.'; return; }
+    status.textContent = 'Fetching AFL Fantasy scores...';
+    try {
+        // Fetch AFL Fantasy player data (has per-round scores)
+        const r = await fetch('https://fantasy.afl.com.au/data/afl/players.json', {cache:'no-store'});
+        if (!r.ok) throw new Error('AFL Fantasy API error: ' + r.status);
+        const buf = await r.arrayBuffer();
+        // Decompress gzip manually using DecompressionStream
+        const ds = new DecompressionStream('gzip');
+        const writer = ds.writable.getWriter();
+        writer.write(new Uint8Array(buf));
+        writer.close();
+        const reader = ds.readable.getReader();
+        const chunks = [];
+        while (true) {
+            const {done, value} = await reader.read();
+            if (done) break;
+            chunks.push(value);
+        }
+        const totalLen = chunks.reduce((s, c) => s + c.length, 0);
+        const combined = new Uint8Array(totalLen);
+        let offset = 0;
+        for (const c of chunks) { combined.set(c, offset); offset += c.length; }
+        const fantasyPlayers = JSON.parse(new TextDecoder().decode(combined));
+        
+        // Build name -> player map
+        const nameMap = {};
+        (allPlayers || []).forEach(p => { nameMap[p.name.toLowerCase()] = p.id; });
+        
+        // Build rows for this round
+        const rows = [];
+        const roundNum = String(round.round_number);
+        for (const fp of fantasyPlayers) {
+            const name = (fp.first_name + ' ' + fp.last_name).trim();
+            const playerId = nameMap[name.toLowerCase()];
+            if (!playerId) continue;
+            const pts = fp.stats?.scores?.[roundNum];
+            if (!pts) continue;
+            rows.push({ player_id: playerId, round_id: roundId, fantasy_pts: pts });
+        }
+        
+        if (rows.length === 0) { status.textContent = 'No scores found for Round ' + round.round_number; return; }
+        status.textContent = 'Uploading ' + rows.length + ' scores...';
+        
+        // POST to API in batches
+        const BATCH = 50;
+        let saved = 0;
+        for (let i = 0; i < rows.length; i += BATCH) {
+            const batch = rows.slice(i, i + BATCH);
+            await apiFetch('/api/stats', { method: 'POST', body: JSON.stringify(batch.map(r => ({
+                player_id: r.player_id, round_id: r.round_id, fantasy_pts: r.fantasy_pts,
+                goals:0, behinds:0, marks:0, tackles:0, hitouts:0, disposals:0
+            }))) });
+            saved += batch.length;
+            status.textContent = 'Saved ' + saved + '/' + rows.length + '...';
+        }
+        status.style.color = 'var(--accent2)';
+        status.textContent = '✓ Synced ' + rows.length + ' AFL Fantasy scores for Round ' + round.round_number + '!';
+        // Refresh scores
+        await loadAllData();
+        renderLadder(); renderFixtures(); renderStats();
+    } catch(e) {
+        status.style.color = 'var(--loss)';
+        status.textContent = 'Error: ' + e.message;
+    }
+}
+
 function openExportModal(){document.getElementById("exportModal").classList.add("active")}
 function closeExportModal(){document.getElementById("exportModal").classList.remove("active")}
 async function exportPage(type){closeExportModal();var pm={ladder:"pageLadder",fixtures:"pageFixtures",stats:"pageStats",h2h:"pageH2H"};var el=document.getElementById(pm[type]);if(!el)return;if(typeof html2canvas!=="undefined"){try{var cv=await html2canvas(el,{backgroundColor:"#0f0f1e"});var a=document.createElement("a");a.download="SLY_"+type+"_"+new Date().toISOString().split("T")[0]+".png";a.href=cv.toDataURL();a.click();return}catch(e){}}try{await navigator.clipboard.writeText(el.innerText);alert("Copied "+type+" to clipboard!")}catch(e){alert("Screenshot not available")}}
@@ -3947,15 +4045,19 @@ let activePickSlot = null;
 
 function calcSlotScore(slot, stats) {
     if (!stats) return null;
+    const fp = parseFloat(stats.fantasy_pts||0);
     const g=stats.goals||0, b=stats.behinds||0, m=stats.marks||0,
           t=stats.tackles||0, h=stats.hitouts||0, d=stats.disposals||0;
+    // If AFL Fantasy composite score is available and no individual stats, use it for all slots
+    const hasIndividual = g||b||m||t||h||d;
+    if (fp > 0 && !hasIndividual) return fp;
     switch(slot) {
         case 'SG': return g*10 + b;
         case 'G1': case 'G2': return g*6 + b;
         case 'R':  return h*0.5 + d*0.5 + m;
         case 'M':  return m*4;
         case 'T':  return t*4;
-        case 'D1': case 'D2': return d;
+        case 'D1': case 'D2': return d || fp;
         default:   return null;
     }
 }
