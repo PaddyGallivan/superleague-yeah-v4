@@ -2160,7 +2160,7 @@ function adjustBrightness(color, percent) {
 }
 
 function getJerseySVG(color, size) {
-    size = size || 32; size = Math.round(size * 1.5);
+    size = size || 32; size = Math.round(size * 1.0);
     const uid = 'j' + color.replace('#','') + size;
     const dk  = adjustBrightness(color, -0.30);
     const dk2 = adjustBrightness(color, -0.55);
@@ -2497,7 +2497,7 @@ async function loadHomePage() {
     allCoaches.forEach(coach => {
         const coachPicks = picksByCoach[coach.id] || [];
         const hasSubmitted = coachPicks.length > 0;
-        html += '<div style="background:var(--card);border-radius:14px;padding:0.9rem 1rem;margin-bottom:0.6rem;border:1px solid var(--border)"><div style="display:flex;align-items:center;gap:0.6rem;' + (hasSubmitted ? 'margin-bottom:0.7rem' : '') + '">' + getJerseyHTML(coach, 28) + '<div style="flex:1"><div style="font-weight:600;color:var(--text);font-size:0.9rem">' + coach.name + '</div><div style="font-size:0.72rem;color:var(--text-secondary)">' + (coach.team_name || '') + '</div></div><div style="font-size:0.75rem;font-weight:600;' + (hasSubmitted ? 'color:var(--win)' : 'color:var(--loss)') + '">' + (hasSubmitted ? '\u2713 Team in' : '\u25CB Not yet') + '</div></div>' + (hasSubmitted ? renderPicksMini(coachPicks) : '') + '</div>';
+        html += '<div style="background:var(--card);border-radius:14px;padding:0.9rem 1rem;margin-bottom:0.6rem;border:1px solid var(--border)"><div style="display:flex;align-items:center;gap:0.6rem;' + (hasSubmitted ? 'margin-bottom:0.7rem' : '') + '">' + getJerseyHTML(coach, 56) + '<div style="flex:1"><div style="font-weight:600;color:var(--text);font-size:0.9rem">' + coach.name + '</div><div style="font-size:0.72rem;color:var(--text-secondary)">' + (coach.team_name || '') + '</div></div><div style="font-size:0.75rem;font-weight:600;' + (hasSubmitted ? 'color:var(--win)' : 'color:var(--loss)') + '">' + (hasSubmitted ? '\u2713 Team in' : '\u25CB Not yet') + '</div></div>' + (hasSubmitted ? renderPicksMini(coachPicks) : '') + '</div>';
     });
     container.innerHTML = html;
     renderActivityFeed();
@@ -2586,7 +2586,7 @@ function renderLadder() {
             <td><div class="rank-badge ${rankClass}">${l.rank}</div></td>
             <td>
                 <div class="coach-cell">
-                    <span style="display:inline-flex;align-items:center">${getJerseyHTML(c, 30)}</span>
+                    <span style="display:inline-flex;align-items:center">${getJerseyHTML(c, 56)}</span>
                     <div>
                         <div class="coach-cell-name">${c.name}${isGoldMember(c.id) ? getGoldBadgeHTML() : ''}</div>
                         <div class="coach-cell-team">${c.team_name}</div>
@@ -2727,7 +2727,7 @@ function renderTeams() {
 
         card.innerHTML = `
             <div class="team-card-header">
-                <div class="team-card-emoji">${getJerseyHTML(c, 44)}</div>
+                <div class="team-card-emoji">${getJerseyHTML(c, 120)}</div>
                 <div class="team-card-info">
                     <h3>${c.name}</h3>
                     <div class="team-name">${c.team_name}</div>
@@ -2759,7 +2759,7 @@ async function openTeamModal(coachId) {
         return parseFloat(s.points || 0) >= avg;
     }).length;
 
-    document.getElementById('modalEmoji').innerHTML = getJerseyHTML(coach, 48);
+    document.getElementById('modalEmoji').innerHTML = getJerseyHTML(coach, 120);
     document.getElementById('modalCoachName').textContent = coach.name;
     document.getElementById('modalTeamName').textContent = coach.team_name;
     document.getElementById('modalStats').innerHTML = `
@@ -2876,7 +2876,7 @@ function renderChat() {
         const time = new Date(msg.created_at).toLocaleString('en-AU', { hour: '2-digit', minute: '2-digit', day: 'numeric', month: 'short' });
         container.innerHTML += `
             <div class="chat-msg">
-                <div class="chat-msg-avatar" style="background:var(--bg-card);display:flex;align-items:center;justify-content:center">${coach ? getJerseyHTML(coach, 28) : '🤖'}</div>
+                <div class="chat-msg-avatar" style="background:var(--bg-card);display:flex;align-items:center;justify-content:center">${coach ? getJerseyHTML(coach, 56) : '🤖'}</div>
                 <div class="chat-msg-content">
                     <div class="chat-msg-header">
                         <span class="chat-msg-name" style="color:${coach ? coach.color : 'var(--text-primary)'}">${coach ? coach.name : 'Unknown'}</span>
@@ -3508,7 +3508,7 @@ function loadGoldAdmin() {
         const isGold = !!gold[String(coach.id)];
         const row = document.createElement('div');
         row.className = 'sly-gold-admin-row' + (isGold ? ' is-gold' : '');
-        row.innerHTML = getJerseyHTML(coach, 20) + `<span style="flex:1;font-size:0.85rem;font-weight:600;margin-left:0.5rem">${coach.name}${isGold ? getGoldBadgeHTML() : ''}</span><label class="toggle-switch" style="transform:scale(0.8)"><input type="checkbox" ${isGold ? 'checked' : ''} onchange="toggleGold(${coach.id}, this.checked, this.closest('.sly-gold-admin-row'))"><span class="slider"></span></label>`;
+        row.innerHTML = getJerseyHTML(coach, 36) + `<span style="flex:1;font-size:0.85rem;font-weight:600;margin-left:0.5rem">${coach.name}${isGold ? getGoldBadgeHTML() : ''}</span><label class="toggle-switch" style="transform:scale(0.8)"><input type="checkbox" ${isGold ? 'checked' : ''} onchange="toggleGold(${coach.id}, this.checked, this.closest('.sly-gold-admin-row'))"><span class="slider"></span></label>`;
         grid.appendChild(row);
     });
     const goldCount = Object.keys(gold).length;
