@@ -3980,8 +3980,8 @@ function updateLiveDraftBanner(){
   document.getElementById('liveDraftTeamName').textContent=coach?.team_name||'';
   document.getElementById('liveDraftPickNum').textContent='#'+pick;
   var yt=document.getElementById('yourTurnBanner');if(yt)yt.style.display=(currentCoach&&cId===currentCoach.id)?'':'none';
-  var pD=document.getElementById('penaltyDisplay');if(pD){var pp=liveDraft&&liveDraft.penalties&&Object.keys(liveDraft.penalties).length;if(pp){pD.style.display='';pD.innerHTML='Timeout penalties: '+Object.entries(liveDraft.penalties).map(function(e){var c=(allCoaches||[]).find(function(x){return x.id===parseInt(e[0]);});return(c?c.name:'?')+' 
-    var avail=(allPlayers||[]).filter(function(p){return !liveDraft.takenNames.has(p.name);});
+  var pD=document.getElementById('penaltyDisplay');if(pD){var pp=liveDraft&&liveDraft.penalties&&Object.keys(liveDraft.penalties).length;if(pp){pD.style.display='';pD.innerHTML='Penalties: '+Object.entries(liveDraft.penalties).map(function(e){var c=(allCoaches||[]).find(function(x){return x.id===parseInt(e[0]);});var amt=e[1];return(c?c.name:'?')+' owes $'+amt;}).join(' | ');}else{pD.style.display='none';}}
+  rs||[]).filter(function(p){return !liveDraft.takenNames.has(p.name);});
     var picks=getGoldSmartPick(cId,avail);
     if(picks&&picks.length){
       goldBanner.style.display='';
