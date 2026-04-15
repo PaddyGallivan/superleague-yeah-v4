@@ -1795,7 +1795,7 @@
       <div style="display:flex;gap:0.5rem;margin-bottom:0.75rem;flex-wrap:wrap;align-items:center">
         <input id="poolSearch" type="search" placeholder="Search player..." style="flex:1;min-width:140px;padding:0.45rem 0.75rem;border-radius:10px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-primary);font-size:0.85rem" oninput="renderPool()">
         <select id="poolSort" style="padding:0.45rem 0.6rem;border-radius:10px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-primary);font-size:0.85rem" onchange="renderPool()">
-          <option value="avg">&#8593; Avg Pts</option><option value="l3">&#8593; Last 3</option><option value="name">A-Z</option>
+          <option value="avg">&#8593; Season Avg</option><option value="l3">&#8593; Last 3 Avg</option><option value="rising">&#128200; Rising</option><option value="need">&#11088; Best for My Team</option><option value="name">A&#8211;Z</option>
         </select>
       </div>
       <div style="display:flex;gap:0.4rem;margin-bottom:0.75rem;flex-wrap:wrap">
@@ -1810,6 +1810,7 @@
         <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.4rem"><span style="font-size:0.9rem">&#11088;</span><span style="font-size:0.82rem;font-weight:700;color:#e8a000">GOLD SMART PICK</span></div>
         <div id="goldPickContent" style="font-size:0.82rem;color:var(--text-primary)"></div>
       </div>
+      <div id="undraftedStarBanner" style="display:none;font-size:0.78rem;color:#e8a000;background:rgba(232,160,0,0.07);border:1px dashed rgba(232,160,0,0.3);border-radius:8px;padding:0.4rem 0.75rem;margin-bottom:0.5rem"></div>
       <div id="poolList" style="display:grid;gap:0.4rem"></div>
       <div id="undraftedSection" style="display:none;margin-top:1rem">
         <div style="font-size:0.8rem;font-weight:700;color:#e8a000;margin-bottom:0.5rem;display:flex;align-items:center;gap:0.4rem">⭐ <span>GOLD: TOP UNDRAFTED PLAYERS</span></div>
@@ -3970,6 +3971,8 @@ function renderPool(){
     var sa=getPlayerStats(a),sb=getPlayerStats(b);
     if(sort==='avg')return(sb[0]||0)-(sa[0]||0);
     if(sort==='l3')return(sb[1]||0)-(sa[1]||0);
+    if(sort==='rising')return((sb[1]||0)-(sb[0]||0))-((sa[1]||0)-(sa[0]||0));
+    if(sort==='need'){var ns2={};if(currentCoach){var av2=players.filter(function(q){return!takenNames.has(q.name);});var pk2=getGoldSmartPick(currentCoach.id,av2)||[];pk2.forEach(function(r,i){ns2[r.player.name]=pk2.length-i;});}return(ns2[b.name]||0)-(ns2[a.name]||0);}
     return a.name.localeCompare(b.name);
   });
   var goldBanner=document.getElementById('goldPickBanner'),recNames=new Set();
