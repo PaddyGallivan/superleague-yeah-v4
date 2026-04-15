@@ -4770,121 +4770,74 @@ async function loadLastTeam() {
 
     // ========== INJURY ROOM PAGE ==========
     async function loadInjuries() {
-    const injContent = document.getElementById('injuriesContent');
-    if (!injContent) return;
-    try {
-        // Use config table - pre-cached injury data, no CORS issues
-        const configData = await apiFetch('/api/config?key=injuries');
-        const injured = configData?.value ? JSON.parse(configData.value) : [];
-        if (Array.isArray(injured) && injured.length > 0) {
-            injContent.innerHTML = '<div style="font-size:0.78rem;color:var(--text-secondary);margin-bottom:0.75rem">AFL Fantasy injury status for players in SLY squads. Updated regularly.</div>'
-                + injured.map(p => {
-                    const coach = (allCoaches||[]).find(c=>c.id===p.coach_id);
-                    const statusEmoji = {injured:'🚑',out:'🚫','not-playing':'⛔',medical_sub:'🔄',substitute:'🔄'}[p.status]||'❓';
-                    return '<div style="display:flex;align-items:center;gap:0.75rem;padding:0.6rem 0.75rem;background:var(--bg-card);border-radius:10px;margin-bottom:0.5rem;border:1px solid var(--border)">'
-                        + getPlayerPhoto({name:p.name,team:p.team,coach_id:p.coach_id},40)
-                        + '<div style="flex:1"><div style="font-size:0.88rem;font-weight:600">'+p.name+'</div>'
-                        + '<div style="font-size:0.72rem;color:var(--text-secondary)">'+getTeamBadge(p.team,'sm')+'</div></div>'
-                        + '<div style="text-align:right"><div style="font-size:1.1rem">'+statusEmoji+'</div>'
-                        + '<div style="font-size:0.7rem;color:var(--loss);font-weight:600;text-transform:uppercase">'+p.status.replace(/_/g,' ')+'</div>'
-                        + (coach?'<div style="font-size:0.68rem;color:var(--text-secondary)">'+coach.name+'</div>':'')
-                        + '</div></div>';
-                }).join('');
-            return;
-        }
-        injContent.innerHTML = '<div style="padding:2rem;text-align:center;color:var(--text-secondary)">No injury alerts for your squad right now 🎉</div>';
-        return;
-    } catch(e) { console.warn('Injuries:', e.message); }
-    // Fallback: try direct AFL Fantasy fetch (works on some networks)
-    try {
-        const r = await fetch('https://fantasy.afl.com.au/data/afl/players.json', {cache:'force-cache'});
-        if (!r.ok) throw new Error('AFL Fantasy unavailable');
-        const buf = await r.arrayBuffer();
-        const ds = new DecompressionStream('gzip');
-        const writer = ds.writable.getWriter();
-        writer.write(new Uint8Array(buf)); writer.close();
-        const reader = ds.readable.getReader();
-        const chunks = [];
-        while(true){const{done,value}=await reader.read();if(done)break;chunks.push(value);}
-        const totalLen = chunks.reduce((s,c)=>s+c.length,0);
-        const combined = new Uint8Array(totalLen);
-        let offset=0;for(const c of chunks){combined.set(c,offset);offset+=c.length;}
-        const players = JSON.parse(new TextDecoder().decode(combined));
-        // Filter injured/out/emergencies
-        const injured = players.filter(p => p.status && p.status !== 'playing');
-        const slyMap = {};
-        (allPlayers||[]).forEach(p=>{slyMap[p.name.toLowerCase()]=p;});
-        const slyInjured = injured
-            .map(p=>({...p,slyPlayer:slyMap[(p.first_name+' '+p.last_name).toLowerCase()]}))
-            .filter(p=>p.slyPlayer)
-            .sort((a,b)=>a.last_name.localeCompare(b.last_name));
-        if(slyInjured.length>0){
-            const statusEmoji={out:'🚫',late_out:'⚠️',medical_sub:'🔄',substitute:'🔄'};
-            injContent.innerHTML='<div style="font-size:0.78rem;color:var(--text-secondary);margin-bottom:0.75rem">Showing AFL Fantasy injury status for players in your SLY squad.</div>'
-                + slyInjured.map(p=>{
-                    const coach=(allCoaches||[]).find(c=>c.id===p.slyPlayer.coach_id);
-                    const emoji=statusEmoji[p.status]||'❓';
-                    return `<div style="display:flex;align-items:center;gap:0.75rem;padding:0.6rem 0.75rem;background:var(--bg-card);border-radius:10px;margin-bottom:0.5rem;border:1px solid var(--border)">
-                        ${getPlayerPhoto(p.slyPlayer,40)}
-                        <div style="flex:1">
-                            <div style="font-size:0.88rem;font-weight:600">${p.first_name} ${p.last_name}</div>
-                            <div style="font-size:0.72rem;color:var(--text-secondary)">${getTeamBadge(p.slyPlayer.team,'sm')}</div>
-                        </div>
-                        <div style="text-align:right">
-                            <div style="font-size:1.1rem">${emoji}</div>
-                            <div style="font-size:0.7rem;color:var(--loss);font-weight:600;text-transform:uppercase">${p.status.replace(/_/g,' ')}</div>
-                            ${coach?`<div style="font-size:0.68rem;color:var(--text-secondary)">${coach.name}</div>`:''}
-                        </div>
-                    </div>`;
-                }).join('');
-            return; // Skip API call if we got AFL Fantasy data
-        }
-    } catch(e) { console.warn('Injuries: AFL Fantasy load failed:', e.message); }
-
         const container = document.getElementById('injuriesContent');
         if (!container) return;
 
         try {
-            const injuries = await apiFetch('/api/injuries').catch(() => []);
+            // Fetch enriched injury data from D1 config (has injury_type + duration from SuperCoach notes)
+            const configResp = await apiFetch('/api/config?key=injuries').catch(() => null);
+            let injuries = [];
+            if (configResp && configResp.value) {
+                try { injuries = typeof configResp.value === 'string' ? JSON.parse(configResp.value) : configResp.value; } catch(e) {}
+            }
+
+            // Helper: find player by id or name
+            function findPlayer(inj) {
+                if (inj.player_id) return allPlayers.find(p => p.id === inj.player_id);
+                return allPlayers.find(p => p.name.toLowerCase() === (inj.name || '').toLowerCase());
+            }
+
+            // Helper: build injury detail string
+            function injuryDetail(inj) {
+                const type = inj.injury_type ? `<span style="color:var(--accent);font-weight:600">${inj.injury_type}</span>` : '';
+                const dur = inj.duration ? `<span style="color:var(--text-secondary)"> &middot; ${inj.duration}</span>` : '';
+                return type || dur ? (type + dur) : '<span style="color:var(--text-secondary)">Under assessment</span>';
+            }
+
             let html = '';
 
-            if (currentCoach && Array.isArray(injuries)) {
+            if (currentCoach && Array.isArray(injuries) && injuries.length > 0) {
                 const mySquad = allPlayers.filter(p => p.coach_id === currentCoach.id);
-                const myInjuries = injuries.filter(inj => mySquad.some(p => p.id === inj.player_id));
+                const myInjuries = injuries.filter(inj => {
+                    if (inj.player_id) return mySquad.some(p => p.id === inj.player_id);
+                    return mySquad.some(p => p.name.toLowerCase() === (inj.name || '').toLowerCase());
+                });
 
                 if (myInjuries.length > 0) {
                     html += '<div class="injury-section"><div class="injury-section-title">My Squad Injuries</div>';
                     myInjuries.forEach(inj => {
-                        const player = allPlayers.find(p => p.id === inj.player_id);
-                        if (player) {
-                            html += `<div class="injury-row">${getPlayerPhoto(player, 24)}<div class="injury-player-info"><div class="injury-player-name">${player.name}</div><div class="injury-type">${inj.injury_type || 'Unknown'}</div><div class="injury-return">Est. return: ${inj.estimated_return || 'TBD'}</div></div></div>`;
-                        }
+                        const player = findPlayer(inj);
+                        const photo = player ? getPlayerPhoto(player, 28) : '';
+                        const name = player ? player.name : inj.name;
+                        html += `<div class="injury-row">${photo}<div class="injury-player-info"><div class="injury-player-name">${name}</div><div class="injury-type">${injuryDetail(inj)}</div></div></div>`;
                     });
                     html += '</div>';
                 }
             }
 
             if (Array.isArray(injuries) && injuries.length > 0) {
+                // Group by AFL team abbreviation
                 const groupedByTeam = {};
                 injuries.forEach(inj => {
-                    const player = allPlayers.find(p => p.id === inj.player_id);
-                    if (player) {
-                        if (!groupedByTeam[player.team]) groupedByTeam[player.team] = [];
-                        groupedByTeam[player.team].push({ ...inj, player });
-                    }
+                    const team = inj.team || 'UNK';
+                    if (!groupedByTeam[team]) groupedByTeam[team] = [];
+                    groupedByTeam[team].push(inj);
                 });
 
                 html += '<div class="injury-section"><div class="injury-section-title">AFL Team Injuries</div>';
                 Object.keys(groupedByTeam).sort().forEach(team => {
                     html += `<div style="margin-bottom:1rem"><div style="font-weight:600;margin-bottom:0.5rem;display:flex;align-items:center;gap:0.5rem">${getTeamBadge(team)} ${team}</div>`;
                     groupedByTeam[team].forEach(inj => {
-                        html += `<div class="injury-row" style="margin-left:1rem">${getPlayerPhoto(inj.player, 24)}<div class="injury-player-info"><div class="injury-player-name">${inj.player.name}</div><div class="injury-type">${inj.injury_type || 'Unknown'}</div><div class="injury-return">Est. return: ${inj.estimated_return || 'TBD'}</div></div></div>`;
+                        const player = findPlayer(inj);
+                        const photo = player ? getPlayerPhoto(player, 24) : '';
+                        const name = player ? player.name : inj.name;
+                        html += `<div class="injury-row" style="margin-left:1rem">${photo}<div class="injury-player-info"><div class="injury-player-name">${name}</div><div class="injury-type">${injuryDetail(inj)}</div></div></div>`;
                     });
                     html += '</div>';
                 });
                 html += '</div>';
             } else {
-                html += '<div style="text-align:center;padding:2rem;color:var(--text-secondary)">No injury data available</div>';
+                html = '<div style="text-align:center;padding:2rem;color:var(--text-secondary)">No injury data available</div>';
             }
 
             container.innerHTML = html;
