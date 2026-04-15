@@ -1738,6 +1738,12 @@
     <div id="pageStats" class="page">
         <div class="section-title">📈 Stats</div>
         <div style="background:var(--bg-card);border-radius:16px;padding:1rem 1.25rem;margin-bottom:1.25rem;border:1px solid var(--border)"><div style="font-size:0.85rem;font-weight:700;margin-bottom:0.75rem;color:var(--text-secondary)">ROUND-BY-ROUND SCORES</div><div id="scoreChartContainer" style="overflow-x:auto"></div></div>
+        <div id="gradesSection" style="margin-bottom:1rem"></div>
+        <div style="background:var(--bg-card);border-radius:16px;padding:1rem 1.25rem;margin-bottom:1.25rem;border:1px solid var(--border)">
+            <div style="font-size:0.85rem;font-weight:700;margin-bottom:0.75rem;color:var(--text-secondary)">🏆 WHO SHOULD WIN THIS ROUND?</div>
+            <div style="font-size:0.72rem;color:var(--text-secondary);margin-bottom:0.75rem">Based on submitted picks + AFL Fantasy averages. Only shows once picks are in.</div>
+            <div id="winProbSection"></div>
+        </div>
         <div class="stats-grid" id="statsGrid"></div>
         <div class="section-title" style="margin-top:1.5rem">🏆 Weekly Awards</div>
         <div class="stats-grid" id="awardsGrid"></div>
@@ -1804,12 +1810,27 @@
         <div id="goldPickContent" style="font-size:0.82rem;color:var(--text-primary)"></div>
       </div>
       <div id="poolList" style="display:grid;gap:0.4rem"></div>
+      <div id="undraftedSection" style="display:none;margin-top:1rem">
+        <div style="font-size:0.8rem;font-weight:700;color:#e8a000;margin-bottom:0.5rem;display:flex;align-items:center;gap:0.4rem">⭐ <span>GOLD: TOP UNDRAFTED PLAYERS</span></div>
+        <p style="font-size:0.72rem;color:var(--text-secondary);margin-bottom:0.5rem">Players not in anyone's squad — could be trades targets.</p>
+        <div id="undraftedList" style="display:grid;gap:0.35rem"></div>
+      </div>
     </div>
     <div id="draftPanelLive" style="display:none">
       <div id="liveDraftSetup">
         <div style="background:var(--bg-card);border-radius:14px;padding:1.25rem;margin-bottom:1rem;border:1px solid var(--border)">
           <div style="font-size:0.95rem;font-weight:700;margin-bottom:0.5rem;color:var(--accent)">&#127919; Start a New Draft</div>
-          <p style="font-size:0.8rem;color:var(--text-secondary);margin-bottom:0.75rem">Snake draft — everyone sees the pool on their phone. Admin picks on the main screen.</p>
+          <p style="font-size:0.8rem;color:var(--text-secondary);margin-bottom:0.5rem">Snake draft — everyone sees the pool on their phone. Admin picks on the main screen.</p>
+          <div style="background:var(--bg-input);border-radius:10px;padding:0.75rem;margin-bottom:0.75rem;font-size:0.78rem;color:var(--text-secondary);line-height:1.7">
+            <strong style="color:var(--text-primary)">How draft night works 🎯</strong><br>
+            1️⃣ Admin hits <strong>Start Draft</strong> — sets number of rounds<br>
+            2️⃣ App shows whose turn it is (jersey + name) on admin screen<br>
+            3️⃣ All coaches browse the available pool on their phones — filter by DEF/MID/RUC/FWD<br>
+            4️⃣ Coaches call their pick → admin taps <strong>PICK</strong> → player gone from pool<br>
+            5️⃣ ⭐ Gold coaches see AI picks highlighted 🥇🥈🥉 (but grade penalised for using it)<br>
+            6️⃣ Snake order: Rd 1 → 1–16, Rd 2 → 16–1, alternating each round<br>
+            7️⃣ Skip or Undo available at any time
+          </div>
           <label style="font-size:0.82rem;color:var(--text-secondary);display:block;margin-bottom:0.3rem">Number of rounds</label>
           <input type="number" id="liveDraftRounds" value="22" min="1" max="40" style="width:80px;padding:0.4rem 0.6rem;border-radius:8px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-primary);font-size:0.9rem;margin-bottom:0.75rem">
           <button onclick="startLiveDraft()" style="display:block;width:100%;padding:0.75rem;border-radius:12px;border:none;background:var(--accent);color:#000;font-size:0.95rem;font-weight:700;cursor:pointer">&#127944; Start Draft</button>
@@ -3252,6 +3273,8 @@ function renderStats() {
 
     // Round-by-round chart
     renderScoreChart();
+    renderGradesSection();
+    renderWinProbability();
     // Weekly awards
     const awardsGridEl = document.getElementById('awardsGrid');
     awardsGridEl.innerHTML = '';
@@ -4073,6 +4096,136 @@ async function syncAFLFantasyScores() {
         status.textContent = 'Error: ' + e.message;
     }
 }
+
+
+// ========== GRADING + WIN PROBABILITY ==========
+function calcGrade(rank, total, isGold) {
+    const pct = rank / total;
+    let grade, color;
+    if (pct<=0.0625){grade='A+';color='#00ff88';}
+    else if(pct<=0.1875){grade='A';color='#00ff88';}
+    else if(pct<=0.375){grade='B';color='#00d4ff';}
+    else if(pct<=0.625){grade='C';color='#ffd700';}
+    else if(pct<=0.8125){grade='D';color='#ff9944';}
+    else{grade='F';color='#ff6b6b';}
+    if(isGold){const o=['A+','A','B','C','D','F'],cols=['#00ff88','#00ff88','#00d4ff','#ffd700','#ff9944','#ff6b6b'];const i=Math.min(o.indexOf(grade)+1,5);return{grade:o[i]+'*',color:cols[i],penalised:true};}
+    return{grade,color,penalised:false};
+}
+
+function getCoachGrades(coachId){
+    const validRounds=(allRounds||[]).filter(r=>r.is_complete&&r.round_number>0).sort((a,b)=>a.round_number-b.round_number);
+    const isGold=isGoldMember(coachId);
+    const weekly=[];
+    validRounds.forEach(round=>{
+        const rs=(allScores||[]).filter(s=>s.round_id===round.id&&s.points!=null).sort((a,b)=>parseFloat(b.points)-parseFloat(a.points));
+        const rank=rs.findIndex(s=>s.coach_id===coachId)+1;
+        if(rank>0){const g=calcGrade(rank,rs.length,isGold);weekly.push({round:round.round_number,rank,...g});}
+    });
+    const my=(allScores||[]).filter(s=>s.coach_id===coachId&&s.points!=null&&(allRounds||[]).find(r=>r.id===s.round_id)?.round_number>0);
+    const wins=my.filter(s=>s.result==='W').length;
+    const rank=my.length>0?Math.ceil((1-wins/my.length)*(allCoaches||[]).length):(allCoaches||[]).length;
+    return{weekly,overall:calcGrade(rank,(allCoaches||[]).length,isGold),wins,losses:my.length-wins};
+}
+
+function getDraftGrade(coachId){
+    const pl=(allPlayers||[]).filter(p=>p.coach_id===coachId);
+    const avgs=pl.map(p=>AFL_STATS[p.name]?.[0]||0).filter(v=>v>0);
+    if(!avgs.length)return null;
+    const myAvg=avgs.reduce((s,v)=>s+v,0)/avgs.length;
+    const coachAvgs=(allCoaches||[]).map(c=>{const ps=(allPlayers||[]).filter(p=>p.coach_id===c.id);const as=ps.map(p=>AFL_STATS[p.name]?.[0]||0).filter(v=>v>0);return as.length?as.reduce((s,v)=>s+v,0)/as.length:0;}).sort((a,b)=>b-a);
+    const rank=coachAvgs.findIndex(a=>a<=myAvg)+1||coachAvgs.length;
+    return{...calcGrade(rank,coachAvgs.length,isGoldMember(coachId)),avg:myAvg.toFixed(1)};
+}
+
+function getUndraftedStars(){
+    const owned=new Set((allPlayers||[]).filter(p=>p.coach_id).map(p=>p.name.toLowerCase()));
+    return Object.entries(AFL_STATS||{}).filter(([n])=>!owned.has(n.toLowerCase())).map(([n,[avg,l3,pos]])=>({name:n,avg,l3,pos:['','DEF','MID','RUC','FWD'][pos]||'?'})).sort((a,b)=>b.avg-a.avg).slice(0,15);
+}
+
+async function calcWinProbability(){
+    // Only works after picks submitted for the open/live round
+    const openRound=(allRounds||[]).find(r=>r.status==='open'||r.status==='live');
+    if(!openRound)return null;
+    // Fetch all picks for this round
+    const allPicks=await apiFetch('/api/picks?round_id='+openRound.id);
+    if(!Array.isArray(allPicks)||!allPicks.length)return null;
+    // Group picks by coach
+    const SCORING_SLOTS=['SG','G1','G2','R','M','T','D1','D2'];
+    const coachExpected={};
+    (allCoaches||[]).forEach(c=>{
+        const myPicks=allPicks.filter(p=>p.coach_id===c.id&&SCORING_SLOTS.includes(p.slot));
+        if(!myPicks.length)return;
+        let expected=0;
+        myPicks.forEach(pick=>{
+            const player=(allPlayers||[]).find(p=>p.id===pick.player_id);
+            const stats=player?AFL_STATS[player.name]:null;
+            const avg=stats?stats[0]:50; // default 50 if unknown
+            expected+=avg;
+        });
+        coachExpected[c.id]={coach:c,expected:Math.round(expected),picks:myPicks.length};
+    });
+    const submitted=Object.values(coachExpected).filter(e=>e.picks>=8);
+    if(submitted.length<2)return null;
+    // Calculate win probability: % chance each coach scores above average
+    const scores=submitted.map(e=>e.expected);
+    const mean=scores.reduce((s,v)=>s+v,0)/scores.length;
+    const std=Math.sqrt(scores.map(v=>(v-mean)**2).reduce((s,v)=>s+v,0)/scores.length)||1;
+    return submitted.sort((a,b)=>b.expected-a.expected).map((e,i)=>{
+        // Win prob: based on rank among submitted, with some randomness factor
+        const zscore=(e.expected-mean)/std;
+        const prob=Math.round(Math.min(95,Math.max(5,50+zscore*15)));
+        return{...e,rank:i+1,winProb:prob};
+    });
+}
+
+async function renderWinProbability(){
+    const el=document.getElementById('winProbSection');
+    if(!el)return;
+    const openRound=(allRounds||[]).find(r=>r.status==='open'||r.status==='live');
+    if(!openRound){el.innerHTML='<div style="padding:1rem;text-align:center;color:var(--text-secondary);font-size:0.82rem">Win predictions appear once Round picks are locked in</div>';return;}
+    el.innerHTML='<div style="text-align:center;padding:0.75rem;color:var(--text-secondary);font-size:0.82rem"><div class="spinner" style="margin:0 auto 0.5rem"></div>Calculating predictions...</div>';
+    const results=await calcWinProbability();
+    if(!results){el.innerHTML='<div style="padding:1rem;text-align:center;color:var(--text-secondary);font-size:0.82rem">Submit your team picks to see win predictions for Round '+openRound.round_number+'</div>';return;}
+    const isMine=id=>currentCoach&&currentCoach.id===id;
+    el.innerHTML=results.map((r,i)=>`
+        <div style="display:flex;align-items:center;gap:0.75rem;padding:0.6rem 0.75rem;background:${isMine(r.coach.id)?'rgba(0,212,255,0.08)':'var(--bg-card)'};border-radius:10px;margin-bottom:0.4rem;border:1px solid ${isMine(r.coach.id)?'var(--accent)':'var(--border)'}">
+            <span style="font-size:1rem">${i===0?'🏆':i===1?'🥈':i===2?'🥉':'  '}</span>
+            ${getJerseyHTML(r.coach,20)}
+            <div style="flex:1"><div style="font-size:0.85rem;font-weight:600">${r.coach.name}</div><div style="font-size:0.7rem;color:var(--text-secondary)">Expected: ${r.expected} pts</div></div>
+            <div style="text-align:right">
+                <div style="font-size:1.2rem;font-weight:800;color:${r.winProb>=60?'var(--win)':r.winProb>=40?'var(--live)':'var(--loss)'}">${r.winProb}%</div>
+                <div style="font-size:0.6rem;color:var(--text-secondary)">win chance</div>
+            </div>
+        </div>
+    `).join('');
+}
+
+function renderGradesSection(){
+    const el=document.getElementById('gradesSection');
+    if(!el||!currentCoach)return;
+    const{weekly,overall,wins,losses}=getCoachGrades(currentCoach.id);
+    const draftG=getDraftGrade(currentCoach.id);
+    const isGold=isGoldMember(currentCoach.id);
+    el.innerHTML=`<div style="background:var(--bg-card);border-radius:16px;padding:1.25rem;margin-bottom:1rem;border:1px solid var(--border)">
+        <div style="font-size:0.78rem;font-weight:700;color:var(--text-secondary);margin-bottom:0.75rem">YOUR GRADES ${isGold?'<span style="color:#e8a000">⭐ Gold coaches graded harder</span>':''}</div>
+        <div style="display:flex;gap:1rem;flex-wrap:wrap;align-items:flex-start;margin-bottom:0.75rem">
+            <div style="text-align:center">
+                <div style="font-size:0.65rem;color:var(--text-secondary);font-weight:700;text-transform:uppercase">Season</div>
+                <div style="font-size:2.2rem;font-weight:900;color:${overall.color}">${overall.grade}</div>
+                <div style="font-size:0.62rem;color:var(--text-secondary)">${wins}W-${losses}L</div>
+            </div>
+            ${draftG?`<div style="text-align:center"><div style="font-size:0.65rem;color:var(--text-secondary);font-weight:700;text-transform:uppercase">Draft</div><div style="font-size:2.2rem;font-weight:900;color:${draftG.color}">${draftG.grade}</div><div style="font-size:0.62rem;color:var(--text-secondary)">${draftG.avg} avg pts</div></div>`:''}
+            <div style="flex:1;min-width:140px">
+                <div style="font-size:0.65rem;color:var(--text-secondary);font-weight:700;text-transform:uppercase;margin-bottom:0.4rem">Weekly</div>
+                <div style="display:flex;gap:0.35rem;flex-wrap:wrap">
+                    ${weekly.map(w=>`<div style="text-align:center"><div style="font-size:0.58rem;color:var(--text-secondary)">R${w.round}</div><div style="font-size:0.95rem;font-weight:700;color:${w.color}">${w.grade}</div></div>`).join('')}
+                </div>
+            </div>
+        </div>
+        ${isGold?'<div style="font-size:0.68rem;color:#e8a000;border-top:1px solid rgba(232,160,0,0.2);padding-top:0.4rem">* Grade reduced by one level for Gold AI assistance — you had help!</div>':''}
+    </div>`;
+}
+// ========== END GRADING ==========
 
 function openExportModal(){document.getElementById("exportModal").classList.add("active")}
 function closeExportModal(){document.getElementById("exportModal").classList.remove("active")}
