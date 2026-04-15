@@ -4774,12 +4774,9 @@ async function loadLastTeam() {
         if (!container) return;
 
         try {
-            // Fetch enriched injury data from D1 config (has injury_type + duration from SuperCoach notes)
-            const configResp = await apiFetch('/api/config?key=injuries').catch(() => null);
-            let injuries = [];
-            if (configResp && configResp.value) {
-                try { injuries = typeof configResp.value === 'string' ? JSON.parse(configResp.value) : configResp.value; } catch(e) {}
-            }
+            // Fetch live injury data from SuperCoach notes (body part + duration), falls back to D1 cache
+            let injuries = await apiFetch('/api/injuries').catch(() => null);
+            if (!Array.isArray(injuries)) injuries = [];
 
             // Helper: find player by id or name
             function findPlayer(inj) {
