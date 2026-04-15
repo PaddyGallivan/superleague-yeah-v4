@@ -1688,8 +1688,7 @@
 
     <div id="pageFixtures" class="page">
         <div class="section-title">📅 Fixtures</div>
-        <div id="fixturesTabBar" style="display:flex;gap:0.3rem;overflow-x:auto;padding-bottom:0.4rem;margin-bottom:0.5rem;scrollbar-width:none"></div>
-    <div id="fixturesRoundNav" style="display:flex;gap:0.5rem;margin-bottom:1rem;flex-wrap:wrap"></div>
+        <div id="fixturesRoundNav" style="display:flex;gap:0.5rem;margin-bottom:1rem;flex-wrap:wrap"></div>
         <div id="fixturesContent"></div>
     </div>
 
@@ -2658,6 +2657,13 @@ function renderFixtures() {
     container.innerHTML = '';
     const nav = document.getElementById('fixturesRoundNav');
     nav.innerHTML = '';
+    // Populate fixture round tab bar
+    const _ftb=document.getElementById('fixturesTabBar');
+    if(_ftb){
+        const _rds=(allRounds||[]).filter(function(r){return r.round_number>0;}).sort(function(a,b){return a.round_number-b.round_number;});
+        const _cur=fixturesSelectedRound||(_rds.find(function(r){return r.status==='open'||r.status==='live';})||_rds[_rds.length-1]||{}).id;
+        _ftb.innerHTML=_rds.map(function(r){return '<button onclick="fixturesSelectedRound='+r.id+';renderFixtures();" style="padding:4px 11px;border-radius:20px;border:1px solid var(--border);background:'+(_cur===r.id?'var(--accent)':'var(--bg-card)')+';color:'+(_cur===r.id?'#000':'var(--text-secondary)')+';font-size:0.73rem;font-weight:600;cursor:pointer;flex-shrink:0;white-space:nowrap">R'+r.round_number+'</button>';}).join('');
+    }
 
     // Show each round as a sorted points scoreboard
     const roundsWithScores = allRounds
@@ -2837,7 +2843,7 @@ async function openTeamModal(coachId) {
             if (score !== null) totalScore += score;
             return `<div class="modal-slot-row">
                 <div class="modal-slot-tag">${slot}</div>
-                <div class="modal-slot-player">${(()=>{const _n=player?.name||'Unknown';const _p=_n.split(' ');return _p.length>1?_p[0][0]+'. '+_p.slice(1).join(' '):_n;})()}</div>
+                <div class="modal-slot-player">${(function(){var _n=(player&&player.name)||'Unknown';var _p=_n.split(' ');return _p.length>1?_p[0][0]+'. '+_p.slice(1).join(' '):_n;})()}</div>
                 <div class="modal-slot-score">${score !== null ? score.toFixed(1) : stats ? '?' : ''}</div>
             </div>`;
         }).join('');
