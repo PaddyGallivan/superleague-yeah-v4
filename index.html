@@ -4002,7 +4002,8 @@ async function autoSkipWithPenalty(coachId,coachName){
     const saveState={...liveDraft,takenNames:undefined,pickedNames:[...liveDraft.takenNames]};
     await saveDraftToServer(saveState);
     renderLiveDraftFromState();
-    showToast('⏭ '+coachName+' timed out — 
+    showToast('Timed out! $5 penalty added for ' + coachName);
+    
 function buildSnakeOrder(coaches,rounds){
   var order=[];
   for(var r=0;r<rounds;r++){var arr=r%2===0?coaches.slice():coaches.slice().reverse();arr.forEach(function(c){order.push(c.id);});}
