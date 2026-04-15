@@ -1688,7 +1688,8 @@
 
     <div id="pageFixtures" class="page">
         <div class="section-title">📅 Fixtures</div>
-        <div id="fixturesRoundNav" style="display:flex;gap:0.5rem;margin-bottom:1rem;flex-wrap:wrap"></div>
+        <div id="fixturesTabBar" style="display:flex;gap:0.3rem;overflow-x:auto;padding-bottom:0.4rem;margin-bottom:0.5rem;scrollbar-width:none"></div>
+    <div id="fixturesRoundNav" style="display:flex;gap:0.5rem;margin-bottom:1rem;flex-wrap:wrap"></div>
         <div id="fixturesContent"></div>
     </div>
 
@@ -2836,7 +2837,7 @@ async function openTeamModal(coachId) {
             if (score !== null) totalScore += score;
             return `<div class="modal-slot-row">
                 <div class="modal-slot-tag">${slot}</div>
-                <div class="modal-slot-player">${player?.name || 'Unknown'}</div>
+                <div class="modal-slot-player">${(()=>{const _n=player?.name||'Unknown';const _p=_n.split(' ');return _p.length>1?_p[0][0]+'. '+_p.slice(1).join(' '):_n;})()}</div>
                 <div class="modal-slot-score">${score !== null ? score.toFixed(1) : stats ? '?' : ''}</div>
             </div>`;
         }).join('');
