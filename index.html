@@ -1679,6 +1679,7 @@
                         <th class="hide-mobile">PF</th>
                         <th class="hide-mobile">L</th>
                         <th class="hide-mobile">Win%</th>
+                        <th class="hide-mobile">Grade</th>
                     </tr>
                 </thead>
                 <tbody id="ladderBody"></tbody>
@@ -2153,6 +2154,7 @@ let unreadMessages = 0;
 let unreadTrades = 0;
 let currentPage = 'pageHome';
 let isDark = true;
+let slyGoldData = {}; // Gold members stored in D1, shared across all users
 
 // ========== INIT ==========
 document.addEventListener('DOMContentLoaded', async () => {
@@ -2249,14 +2251,19 @@ async function loadCoaches() {
 }
 
 async function loadAllData() {
-    const [players, scores, rounds, ladder, trades, messages] = await Promise.all([
+    const [players, scores, rounds, ladder, trades, messages, goldConfig] = await Promise.all([
         apiFetch('/api/players'),
         apiFetch('/api/scores'),
         apiFetch('/api/rounds'),
         apiFetch('/api/ladder').catch(() => []),
         apiFetch('/api/trades').catch(() => []),
-        apiFetch('/api/messages').catch(() => [])
+        apiFetch('/api/messages').catch(() => []),
+        apiFetch('/api/config?key=sly_gold').catch(() => null)
     ]);
+    // Sync gold data from D1
+    if (goldConfig && goldConfig.value) {
+        try { slyGoldData = typeof goldConfig.value === 'string' ? JSON.parse(goldConfig.value) : goldConfig.value; } catch(e) {}
+    }
 
     allPlayers = (Array.isArray(players) ? players : []).map(p => ({...p, afl_team: p.afl_team || p.team}));
     allScores = Array.isArray(scores) ? scores : [];
@@ -2524,7 +2531,8 @@ async function loadHomePage() {
             const pts = parseFloat(s.points || 0);
             const isMe = currentCoach && s.coach_id === currentCoach.id;
             const aboveAvg = pts >= roundAvg;
-            html += '<div style="display:flex;align-items:center;padding:0.55rem 1rem;border-bottom:1px solid var(--border);' + (isMe ? 'background:rgba(0,168,107,0.08)' : '') + '"><span style="color:var(--text-secondary);font-size:0.75rem;width:1.6rem">' + (idx+1) + '.</span>' + getJerseyHTML(coach, 22) + '<span style="margin-left:0.5rem;flex:1;font-size:0.88rem;color:var(--text)">' + coach.name + '</span><span style="font-weight:700;font-size:0.9rem;color:' + (aboveAvg ? 'var(--win)' : 'var(--loss)') + '">' + pts.toFixed(1) + '</span></div>';
+            const weekGrade = getGradeHTML(coach.id, liveRound.id);
+            html += '<div style="display:flex;align-items:center;padding:0.55rem 1rem;border-bottom:1px solid var(--border);' + (isMe ? 'background:rgba(0,168,107,0.08)' : '') + '"><span style="color:var(--text-secondary);font-size:0.75rem;width:1.6rem">' + (idx+1) + '.</span>' + getJerseyHTML(coach, 22) + '<span style="margin-left:0.5rem;flex:1;font-size:0.88rem;color:var(--text)">' + coach.name + '</span>' + (weekGrade ? weekGrade + ' ' : '') + '<span style="font-weight:700;font-size:0.9rem;color:' + (aboveAvg ? 'var(--win)' : 'var(--loss)') + '">' + pts.toFixed(1) + '</span></div>';
         });
         html += '</div>';
     }
@@ -2532,7 +2540,19 @@ async function loadHomePage() {
     allCoaches.forEach(coach => {
         const coachPicks = picksByCoach[coach.id] || [];
         const hasSubmitted = coachPicks.length > 0;
-        html += '<div style="background:var(--card);border-radius:14px;padding:0.9rem 1rem;margin-bottom:0.6rem;border:1px solid var(--border)"><div style="display:flex;align-items:center;gap:0.6rem;' + (hasSubmitted ? 'margin-bottom:0.7rem' : '') + '">' + getJerseyHTML(coach, 56) + '<div style="flex:1"><div style="font-weight:600;color:var(--text);font-size:0.9rem">' + coach.name + '</div><div style="font-size:0.72rem;color:var(--text-secondary)">' + (coach.team_name || '') + '</div></div><div style="font-size:0.75rem;font-weight:600;' + (hasSubmitted ? 'color:var(--win)' : 'color:var(--loss)') + '">' + (hasSubmitted ? '\u2713 Team in' : '\u25CB Not yet') + '</div></div>' + (hasSubmitted ? renderPicksMini(coachPicks) : '') + '</div>';
+        const gradeHtml = getGradeHTML(coach.id);
+        const isRoundOpen = liveRound.status === 'open';
+        let winPctHtml = '';
+        if (hasSubmitted && isRoundOpen) {
+            const allAvgs = allCoaches.map(c => ({ id: c.id, avg: (() => { const ss = allScores.filter(s => s.coach_id === c.id && s.points != null); return ss.length ? ss.reduce((a,s)=>a+parseFloat(s.points||0),0)/ss.length : 0; })() })).filter(x => picksByCoach[x.id]?.length > 0);
+            if (allAvgs.length > 1) {
+                const sorted = [...allAvgs].sort((a,b) => b.avg - a.avg);
+                const myRank = sorted.findIndex(x => x.id === coach.id) + 1;
+                const pct = Math.max(5, Math.round(((allAvgs.length - myRank + 1) / allAvgs.length) * 100));
+                winPctHtml = '<div style="font-size:0.7rem;color:var(--accent);font-weight:600">~' + pct + '% win</div>';
+            }
+        }
+        html += '<div style="background:var(--card);border-radius:14px;padding:0.9rem 1rem;margin-bottom:0.6rem;border:1px solid var(--border)"><div style="display:flex;align-items:center;gap:0.6rem;' + (hasSubmitted ? 'margin-bottom:0.7rem' : '') + '">' + getJerseyHTML(coach, 28) + '<div style="flex:1"><div style="display:flex;align-items:center;gap:0.4rem"><span style="font-weight:600;color:var(--text);font-size:0.9rem">' + coach.name + '</span>' + gradeHtml + '</div><div style="font-size:0.72rem;color:var(--text-secondary)">' + (coach.team_name || '') + '</div></div><div style="text-align:right"><div style="font-size:0.75rem;font-weight:600;' + (hasSubmitted ? 'color:var(--win)' : 'color:var(--loss)') + '">' + (hasSubmitted ? '\u2713 Team in' : '\u25CB Not yet') + '</div>' + winPctHtml + '</div></div>' + (hasSubmitted ? renderPicksMini(coachPicks) : '') + '</div>';
     });
     container.innerHTML = html;
     renderActivityFeed();
@@ -2644,6 +2664,7 @@ function renderLadder() {
             <td class="hide-mobile">${pf.toFixed(1)}</td>
             <td class="hide-mobile">${formLosses}</td>
             <td class="hide-mobile">${pct}</td>
+            <td class="hide-mobile">${getGradeHTML(c.id)}</td>
         `;
         tbody.appendChild(tr);
     });
@@ -3570,9 +3591,10 @@ async function recalcScoresForRound(roundId, statusEl) {
 
 // ========== PAYMENTS / BUY-INS ==========
 // ========== SLY GOLD SYSTEM ==========
-function getGoldMembers() { try { return JSON.parse(localStorage.getItem('slyGoldMembers') || '{}'); } catch(e) { return {}; } }
-function setGoldMember(coachId, isGold) { const g = getGoldMembers(); if (isGold) g[coachId] = true; else delete g[coachId]; localStorage.setItem('slyGoldMembers', JSON.stringify(g)); }
-function isGoldMember(coachId) { return !!getGoldMembers()[String(coachId)]; }
+// Gold stored in D1 - shared across all devices
+function getGoldMembers() { return slyGoldData || {}; }
+async function setGoldMember(coachId, isGold) { const gold = {...(slyGoldData||{})}; if(isGold) gold[String(coachId)]=true; else delete gold[String(coachId)]; slyGoldData=gold; try { await apiFetch('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key:'sly_gold',value:JSON.stringify(gold)})}); } catch(e){} }
+function isGoldMember(coachId) { return !!(slyGoldData||{})[String(coachId)]; }
 function getGoldBadgeHTML() { return '<span class="sly-gold-badge">⭐ GOLD</span>'; }
 function loadGoldAdmin() {
     const grid = document.getElementById('goldMembersGrid');
@@ -3590,9 +3612,10 @@ function loadGoldAdmin() {
     const goldCount = Object.keys(gold).length;
     if (status) status.textContent = goldCount > 0 ? `${goldCount} gold member${goldCount > 1 ? 's' : ''} — ${goldCount * 20} extra collected` : '';
 }
-function toggleGold(coachId, isGold, rowEl) {
-    setGoldMember(coachId, isGold);
-    if (rowEl) rowEl.className = 'sly-gold-admin-row' + (isGold ? ' is-gold' : '');
+async function toggleGold(coachId, isGold, rowEl) {
+    if (rowEl) rowEl.style.opacity = '0.6';
+    await setGoldMember(coachId, isGold);
+    if (rowEl) { rowEl.style.opacity = ''; rowEl.className = 'sly-gold-admin-row' + (isGold ? ' is-gold' : ''); }
     loadGoldAdmin();
     if (typeof loadSlushFund === 'function' && document.getElementById('pageSlushFund') && document.getElementById('pageSlushFund').classList.contains('active')) loadSlushFund();
 }
@@ -3605,6 +3628,44 @@ function renderFundGoldGrid() {
     grid.innerHTML = goldCoaches.map(c => `<div style="display:flex;align-items:center;gap:0.5rem;padding:0.45rem 0.65rem;background:rgba(232,160,0,0.1);border-radius:8px;border:1px solid rgba(232,160,0,0.3)">${getJerseyHTML(c, 18)}<span style="font-size:0.82rem;font-weight:600;flex:1">${c.name}</span><span style="font-size:0.75rem;color:#e8a000;font-weight:700">$20</span></div>`).join('');
 }
 // ========== END SLY GOLD ==========
+
+// ========== PERFORMANCE GRADES ==========
+function getCoachGrade(coachId, roundId = null) {
+    const coachScores = allScores.filter(s => s.coach_id === coachId && s.points != null);
+    if (coachScores.length === 0) return { grade: '–', color: 'var(--text-secondary)', score: null };
+    let score, leagueAvg;
+    if (roundId) {
+        const roundScores = allScores.filter(s => s.round_id === roundId && s.points != null);
+        const myRoundScore = roundScores.find(s => s.coach_id === coachId);
+        if (!myRoundScore) return { grade: '–', color: 'var(--text-secondary)', score: null };
+        score = parseFloat(myRoundScore.points);
+        leagueAvg = roundScores.reduce((a, s) => a + parseFloat(s.points || 0), 0) / roundScores.length;
+    } else {
+        const myAvg = coachScores.reduce((a, s) => a + parseFloat(s.points || 0), 0) / coachScores.length;
+        const allPlayedScores = allScores.filter(s => s.points != null);
+        leagueAvg = allPlayedScores.reduce((a, s) => a + parseFloat(s.points || 0), 0) / allPlayedScores.length;
+        score = myAvg;
+    }
+    if (!leagueAvg || leagueAvg === 0) return { grade: '–', color: 'var(--text-secondary)', score };
+    const ratio = score / leagueAvg;
+    let grade, color;
+    if (ratio >= 1.25)      { grade = 'A+'; color = '#00e676'; }
+    else if (ratio >= 1.12) { grade = 'A';  color = '#00e676'; }
+    else if (ratio >= 1.04) { grade = 'B+'; color = '#69f0ae'; }
+    else if (ratio >= 0.97) { grade = 'B';  color = '#b2dfdb'; }
+    else if (ratio >= 0.88) { grade = 'C';  color = 'var(--text-secondary)'; }
+    else if (ratio >= 0.75) { grade = 'D';  color = '#ff8a65'; }
+    else                    { grade = 'F';  color = 'var(--loss)'; }
+    const isGold = isGoldMember(coachId);
+    return { grade: isGold ? grade + '*' : grade, color, score: parseFloat(score.toFixed(1)), isGold };
+}
+function getGradeHTML(coachId, roundId = null, size = 'sm') {
+    const { grade, color } = getCoachGrade(coachId, roundId);
+    if (grade === '–') return '';
+    const fs = size === 'lg' ? '1.1rem' : '0.72rem';
+    return '<span style="font-size:' + fs + ';font-weight:700;color:' + color + ';background:rgba(255,255,255,0.06);padding:1px 5px;border-radius:5px;letter-spacing:0.5px">' + grade + '</span>';
+}
+// ========== END PERFORMANCE GRADES ==========
 
 async function loadPayments() {
     const grid = document.getElementById('paymentsGrid');
