@@ -1088,6 +1088,17 @@
             color: var(--text-secondary);
         }
 
+        .reaction-row { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 4px; align-items: center; }
+        .reaction-pill { background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; padding: 2px 8px; font-size: 0.8rem; cursor: pointer; color: var(--text-primary); transition: transform 0.1s; }
+        .reaction-pill:hover { transform: scale(1.05); }
+        .reaction-pill.mine { background: var(--accent, #e0b84a); border-color: var(--accent, #e0b84a); color: #111; font-weight: 600; }
+        .reaction-add { background: transparent; border: 1px dashed var(--border); border-radius: 12px; padding: 2px 8px; font-size: 0.9rem; cursor: pointer; opacity: 0.5; color: var(--text-secondary); }
+        .reaction-add:hover { opacity: 1; }
+        .reaction-picker-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 1000; }
+        .reaction-picker { background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; padding: 12px; display: flex; gap: 6px; flex-wrap: wrap; max-width: 320px; }
+        .reaction-picker button { font-size: 1.6rem; background: transparent; border: none; cursor: pointer; padding: 6px 10px; border-radius: 8px; }
+        .reaction-picker button:hover { background: var(--bg-secondary, rgba(255,255,255,0.1)); }
+
         .chat-msg-system {
             text-align: center;
             color: var(--text-secondary);
@@ -2181,6 +2192,8 @@ let allScores = [];
 let allRounds = [];
 let allTrades = [];
 let allMessages = [];
+let messageReactions = {}; // { message_id: [{emoji, count, coach_ids}] }
+const COMMON_REACTIONS = ['🔥','👏','😂','🏆','💩','👀','🎯','💪'];
 let ladderData = [];
 let unreadMessages = 0;
 let unreadTrades = 0;
@@ -2308,6 +2321,7 @@ async function loadAllData() {
     allRounds = Array.isArray(rounds) ? rounds : [];
     ladderData = Array.isArray(ladder) ? ladder : [];
     allMessages = Array.isArray(messages) ? messages : [];
+    loadMessageReactions(allMessages.map(m => m.id)).then(() => { try { renderChat(); } catch(e){} });
 
     // Trades already include trade_players from Worker
     allTrades = (Array.isArray(trades) ? trades : []).map(t => ({
@@ -2896,6 +2910,14 @@ function renderChat() {
         }
 
         const time = new Date(msg.created_at).toLocaleString('en-AU', { hour: '2-digit', minute: '2-digit', day: 'numeric', month: 'short' });
+        const reactions = messageReactions[msg.id] || [];
+        const myId = currentCoach ? currentCoach.id : null;
+        const pillsHtml = reactions.map(r => {
+            const mine = myId && r.coach_ids && r.coach_ids.includes(myId);
+            return `<button class="reaction-pill${mine?' mine':''}" onclick="toggleReaction(${msg.id}, ${JSON.stringify(r.emoji)})">${r.emoji} ${r.count}</button>`;
+        }).join('');
+        const addBtnHtml = !isGuest && currentCoach ? `<button class="reaction-add" onclick="openReactionPicker(${msg.id})" title="React">+</button>` : '';
+        const reactionRow = (pillsHtml || addBtnHtml) ? `<div class="reaction-row">${pillsHtml}${addBtnHtml}</div>` : '';
         container.innerHTML += `
             <div class="chat-msg">
                 <div class="chat-msg-avatar" style="background:var(--bg-card);display:flex;align-items:center;justify-content:center">${coach ? getJerseyHTML(coach, 56) : '🤖'}</div>
@@ -2905,12 +2927,52 @@ function renderChat() {
                         <span class="chat-msg-time">${time}</span>
                     </div>
                     <div class="chat-msg-text">${escapeHtml(msg.content)}</div>
+                    ${reactionRow}
                 </div>
             </div>
         `;
     });
 
     scrollChatToBottom();
+}
+
+async function loadMessageReactions(messageIds) {
+    if (!messageIds || !messageIds.length) { messageReactions = {}; return; }
+    try {
+        const rows = await apiFetch(`/api/messages/reactions?message_ids=${messageIds.join(',')}`);
+        const next = {};
+        (rows || []).forEach(r => {
+            if (!next[r.message_id]) next[r.message_id] = [];
+            next[r.message_id].push({ emoji: r.emoji, count: r.count, coach_ids: r.coach_ids || [] });
+        });
+        messageReactions = next;
+    } catch(e) { console.warn('reactions load failed', e); }
+}
+
+async function toggleReaction(messageId, emoji) {
+    if (!currentCoach || isGuest) return;
+    try {
+        await apiFetch(`/api/messages/${messageId}/reactions`, {
+            method: 'POST',
+            body: JSON.stringify({ coach_id: currentCoach.id, emoji })
+        });
+        await loadMessageReactions(allMessages.map(m => m.id));
+        renderChat();
+    } catch(e) {
+        console.warn('reaction toggle failed', e);
+    }
+}
+
+function openReactionPicker(messageId) {
+    const existing = document.getElementById('reactionPickerOverlay');
+    if (existing) existing.remove();
+    const overlay = document.createElement('div');
+    overlay.id = 'reactionPickerOverlay';
+    overlay.className = 'reaction-picker-overlay';
+    overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
+    const btns = COMMON_REACTIONS.map(em => `<button onclick="toggleReaction(${messageId}, ${JSON.stringify(em)});document.getElementById('reactionPickerOverlay').remove()">${em}</button>`).join('');
+    overlay.innerHTML = `<div class="reaction-picker">${btns}</div>`;
+    document.body.appendChild(overlay);
 }
 
 async function sendMessage() {
@@ -2939,7 +3001,7 @@ async function sendMessage() {
         });
         // Refresh from server to get real ID
         const msgs = await apiFetch('/api/messages');
-        if (Array.isArray(msgs)) { allMessages = msgs; renderChat(); }
+        if (Array.isArray(msgs)) { allMessages = msgs; await loadMessageReactions(allMessages.map(m => m.id)); renderChat(); }
     } catch(e) {
         // Remove optimistic message on failure
         allMessages = allMessages.filter(m => m.id !== tempMsg.id);
@@ -3734,6 +3796,7 @@ async function pollScoresAndMessages() {
         if (Array.isArray(msgs) && msgs.length > allMessages.length) {
             const prevLen = allMessages.length;
             allMessages = msgs;
+            loadMessageReactions(allMessages.map(m => m.id)).then(() => { if (currentPage === 'pageChat') renderChat(); });
             if (currentPage === 'pageChat') {
                 renderChat();
             } else {
@@ -3742,6 +3805,11 @@ async function pollScoresAndMessages() {
                 badge.textContent = unreadMessages;
                 badge.style.display = 'block';
             }
+        } else if (currentPage === 'pageChat' && allMessages.length) {
+            // On chat page with no new msgs — refresh reactions so other coaches' reacts appear
+            const prevHash = JSON.stringify(messageReactions);
+            await loadMessageReactions(allMessages.map(m => m.id));
+            if (JSON.stringify(messageReactions) !== prevHash) renderChat();
         }
 
         // Trades
