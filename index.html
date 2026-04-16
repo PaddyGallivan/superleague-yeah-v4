@@ -3698,11 +3698,24 @@ function scoreHash(scores) {
 
 async function pollScoresAndMessages() {
     try {
-        const [msgs, freshScores, freshTrades] = await Promise.all([
+        const [msgs, freshScores, freshTrades, freshCoaches] = await Promise.all([
             apiFetch('/api/messages').catch(() => allMessages),
             apiFetch('/api/scores').catch(() => allScores),
-            apiFetch('/api/trades').catch(() => allTrades)
+            apiFetch('/api/trades').catch(() => allTrades),
+            apiFetch('/api/coaches').catch(() => null)
         ]);
+
+        // Coaches re-render on change (logo/colour/name)
+        if (Array.isArray(freshCoaches) && freshCoaches.length) {
+            const ch=JSON.stringify(freshCoaches.map(c=>c.logo_url+c.color+c.team_name));
+            const oh=JSON.stringify(allCoaches.map(c=>c.logo_url+c.color+c.team_name));
+            if (ch !== oh) {
+                allCoaches = freshCoaches;
+                renderLadder(); renderTeams();
+                if (currentPage === 'pageHome') loadHomePage();
+                if (currentPage === 'pageFixtures') renderFixtures();
+            }
+        }
 
         // Messages
         if (Array.isArray(msgs) && msgs.length > allMessages.length) {
