@@ -2179,11 +2179,17 @@ let ladderData = [];
 let unreadMessages = 0;
 let unreadTrades = 0;
 let currentPage = 'pageHome';
-let isDark = true;
+let isDark = (localStorage.getItem('sly_theme') || 'dark') === 'dark';
+if (!isDark && typeof document !== 'undefined' && document.body) document.body.classList.add('light-mode');
 let slyGoldData = {}; // Gold members stored in D1, shared across all users
 
 // ========== INIT ==========
 document.addEventListener('DOMContentLoaded', async () => {
+    // Apply saved theme before anything renders
+    document.body.classList.toggle('light-mode', !isDark);
+    const _tt = document.getElementById('themeToggle');
+    if (_tt) _tt.textContent = isDark ? '🌙' : '☀️';
+
     await loadCoaches();
     renderCoachSelect();
     setupPinInputs();
@@ -2532,6 +2538,7 @@ function toggleTheme() {
     isDark = !isDark;
     document.body.classList.toggle('light-mode', !isDark);
     document.getElementById('themeToggle').textContent = isDark ? '🌙' : '☀️';
+    try { localStorage.setItem('sly_theme', isDark ? 'dark' : 'light'); } catch(e) {}
 }
 
 // ========== HOME PAGE ==========
@@ -2878,7 +2885,7 @@ function renderChat() {
     allMessages.forEach(msg => {
         const coach = allCoaches.find(c => c.id === msg.coach_id);
         if (msg.message_type === 'system') {
-            container.innerHTML += `<div class="chat-msg-system">${msg.content}</div>`;
+            container.innerHTML += `<div class="chat-msg-system">${escapeHtml(msg.content)}</div>`;
             return;
         }
 
